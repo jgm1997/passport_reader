@@ -6,3 +6,6 @@ String formatDate(DateTime d) {
 
   return '$y-$m-$day';
 }
+
+/// Drops the time and timezone: we only care about the calendar day
+DateTime dateOnlyUtc(DateTime d) => DateTime.utc(d.year, d.month, d.day);
