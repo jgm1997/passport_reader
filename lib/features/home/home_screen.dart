@@ -33,7 +33,11 @@ class HomeScreen extends StatelessWidget {
               ),
               const Spacer(),
               FilledButton.icon(
-                onPressed: null,
+                onPressed: () => ScaffoldMessenger.of(context)
+                  ..hideCurrentSnackBar()
+                  ..showSnackBar(
+                    const SnackBar(content: Text('Scan not implmeneted')),
+                  ),
                 icon: const Icon(Icons.camera_alt_outlined),
                 label: const Text('Scan MRZ with camera'),
               ),
