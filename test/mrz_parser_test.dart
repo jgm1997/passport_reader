@@ -67,7 +67,7 @@ void main() {
       );
     });
 
-    test('check if mrz.sex is "X" after changing the char to "<"', () {
+    test('sex "<"is parsed as "X" (position 20 has no check digit)', () {
       // Strings are immutable; replaceRange returns a new string.
       final nbLine2 = line2.replaceRange(20, 21, '<');
       final mrz = MrzParser.parseTd3(line1, nbLine2, now: fixedToday);
