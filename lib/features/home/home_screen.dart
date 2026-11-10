@@ -1,5 +1,5 @@
 import 'package:flutter/material.dart';
-import 'package:passport_reader/features/home/mrz_entry/manual_entry_screen.dart';
+import 'package:passport_reader/features/mrz_entry/manual_entry_screen.dart';
 
 class HomeScreen extends StatelessWidget {
   const HomeScreen({super.key});
