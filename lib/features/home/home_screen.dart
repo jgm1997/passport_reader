@@ -19,13 +19,13 @@ class HomeScreen extends StatelessWidget {
               const Icon(Icons.badge_outlined, size: 96),
               const SizedBox(height: 24),
               Text(
-                'Verify your account',
+                'Verify your passport',
                 style: textTheme.headlineSmall,
                 textAlign: TextAlign.center,
               ),
               const SizedBox(height: 12),
               Text(
-                'First we read the machine-realable zone (MRZ) on the photo '
+                'First we read the machine-readable zone (MRZ) on the photo '
                 'page. Then you hold the passport against your phone so we '
                 'can read its chip.',
                 style: textTheme.bodyMedium,

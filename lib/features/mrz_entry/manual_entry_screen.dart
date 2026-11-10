@@ -141,7 +141,7 @@ class _ManualEntryScreenState extends State<ManualEntryScreen> {
                   ),
                 ),
                 const SizedBox(height: 32),
-                FilledButton(onPressed: _submit, child: const Text('continue')),
+                FilledButton(onPressed: _submit, child: const Text('Continue')),
               ],
             ),
           ),
