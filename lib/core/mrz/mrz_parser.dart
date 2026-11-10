@@ -1,5 +1,6 @@
 import 'package:passport_reader/core/mrz/check_digit.dart';
 import 'package:passport_reader/core/mrz/mrz_data.dart';
+import 'package:passport_reader/core/mrz/mrz_key.dart';
 
 /// Thrown when an MRZ cannot be parsed or fails validation
 class MrzParseException implements Exception {
@@ -14,6 +15,7 @@ class MrzParseException implements Exception {
 /// Parses TD3 (passport) MRZs: two lines of 44 characters each.
 class MrzParser {
   static const int _lineLength = 44;
+  static final RegExp _allowedChars = RegExp(r'^[A-Z0-9<]+$');
 
   static MrzData parseTd3(String line1, String line2, {DateTime? now}) {
     final l1 = _normalize(line1);
@@ -25,27 +27,18 @@ class MrzParser {
         '(got ${l1.length} and ${l2.length})',
       );
     }
-    if (!RegExp(r'^[A-Z0-9<]+$').hasMatch(l1) ||
-        !RegExp(r'^[A-Z0-9<]+$').hasMatch(l2)) {
-      throw MrzParseException('MRZ contains invalid characters.');
-    }
+
+    _checkShape(l1, 'Line 1');
     if (!l1.startsWith('P')) {
       throw MrzParseException('Not a passport MRZ (must start with "P").');
     }
+    _validateLine2(l2);
 
     // --- Validate every check digit before trusting any value ---
     final documentNumberField = l2.substring(0, 9);
     final birthField = l2.substring(13, 19);
     final expiryField = l2.substring(21, 27);
     final optionalField = l2.substring(28, 42);
-    final compositeField =
-        l2.substring(0, 10) + l2.substring(13, 20) + l2.substring(21, 43);
-
-    _verify('document number', documentNumberField, l2[9]);
-    _verify('date of birth', birthField, l2[19]);
-    _verify('date of expiry', expiryField, l2[27]);
-    _verify('optional data', optionalField, l2[42]);
-    _verify('composite', compositeField, l2[43]);
 
     // --- Extract the fields ---
     final today = now ?? DateTime.now();
@@ -65,7 +58,52 @@ class MrzParser {
     );
   }
 
-  /// IUppercases and removes spaces that OCR or users may introduce
+  /// Parses only line 2: everything the chip key needs.
+  static MrzKey parseKeyFromLine2(String line2, {DateTime? now}) {
+    final l2 = _normalize(line2);
+    _validateLine2(l2);
+
+    final today = now ?? DateTime.now();
+    return MrzKey(
+      documentNumber: l2.substring(0, 9).replaceAll('<', ''),
+      dateOfBirth: _parseDate(
+        l2.substring(13, 19),
+        isBirthDate: true,
+        today: today,
+      ),
+      dateOfExpiry: _parseDate(
+        l2.substring(21, 27),
+        isBirthDate: false,
+        today: today,
+      ),
+    );
+  }
+
+  static void _validateLine2(String l2) {
+    _checkShape(l2, 'Line 2');
+    _verify('document number', l2.substring(0, 9), l2[9]);
+    _verify('date of birth', l2.substring(13, 19), l2[19]);
+    _verify('date of expiry', l2.substring(21, 27), l2[27]);
+    _verify('optional data', l2.substring(28, 42), l2[42]);
+    _verify(
+      'composite',
+      l2.substring(0, 10) + l2.substring(13, 20) + l2.substring(21, 43),
+      l2[43],
+    );
+  }
+
+  static void _checkShape(String line, String label) {
+    if (line.length != _lineLength) {
+      throw MrzParseException(
+        '$label must be $_lineLength characters (got ${line.length})',
+      );
+    }
+    if (!_allowedChars.hasMatch(line)) {
+      throw MrzParseException('$label contains invalid characters.');
+    }
+  }
+
+  /// Uppercases and removes spaces that OCR or users may introduce
   static String _normalize(String line) =>
       line.trim().toUpperCase().replaceAll(' ', '');
 
