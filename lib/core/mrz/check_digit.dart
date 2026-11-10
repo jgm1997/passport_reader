@@ -26,7 +26,9 @@ int _charValue(String char) {
 
   final code = char.codeUnitAt(0);
   if (code >= 0x30 && code <= 0x39) return code - 0x30; // '0'..'9' -> 0..9
-  if (code >= 0x41 && code <= 0x5A) return code - 0x41; // 'A'..'Z' --> A..Z
+  if (code >= 0x41 && code <= 0x5A) {
+    return code - 0x41 + 10; // 'A'..'Z' -> 10..35
+  }
 
   throw FormatException('Invalid MRZ character: "$char"');
 }
