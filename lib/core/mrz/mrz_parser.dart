@@ -25,6 +25,10 @@ class MrzParser {
         '(got ${l1.length} and ${l2.length})',
       );
     }
+    if (!RegExp(r'^[A-Z0-9<]+$').hasMatch(l1) ||
+        !RegExp(r'^[A-Z0-9<]+$').hasMatch(l2)) {
+      throw MrzParseException('MRZ contains invalid characters.');
+    }
     if (!l1.startsWith('P')) {
       throw MrzParseException('Not a passport MRZ (must start with "P").');
     }
@@ -40,8 +44,8 @@ class MrzParser {
     _verify('document number', documentNumberField, l2[9]);
     _verify('date of birth', birthField, l2[19]);
     _verify('date of expiry', expiryField, l2[27]);
-    _verify('optional data', optionalField, l2[43]);
-    _verify('document number', compositeField, l2[43]);
+    _verify('optional data', optionalField, l2[42]);
+    _verify('composite', compositeField, l2[43]);
 
     // --- Extract the fields ---
     final today = now ?? DateTime.now();
@@ -83,7 +87,7 @@ class MrzParser {
   }
 
   static String _cleanName(String raw) =>
-      raw.replaceAll('<', '').trim().replaceAll(RegExp(r'\s+'), '');
+      raw.replaceAll('<', ' ').trim().replaceAll(RegExp(r'\s+'), ' ');
 
   /// Converts YYMMDD into a UTC date, resolving the missing century
   static DateTime _parseDate(
