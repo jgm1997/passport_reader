@@ -2,10 +2,10 @@ import 'package:passport_reader/core/mrz/check_digit.dart';
 import 'package:passport_reader/core/mrz/mrz_data.dart';
 
 /// Thrown when an MRZ cannot be parsed or fails validation
-class MrzParserException implements Exception {
+class MrzParseException implements Exception {
   final String message;
 
-  MrzParserException(this.message);
+  MrzParseException(this.message);
 
   @override
   String toString() => 'MrzParserException: $message';
@@ -20,13 +20,13 @@ class MrzParser {
     final l2 = _normalize(line2);
 
     if (l1.length != _lineLength || l2.length != _lineLength) {
-      throw MrzParserException(
+      throw MrzParseException(
         'Each line must be $_lineLength characters '
         '(got ${l1.length} and ${l2.length})',
       );
     }
     if (!l1.startsWith('P')) {
-      throw MrzParserException('Not a passport MRZ (must start with "P").');
+      throw MrzParseException('Not a passport MRZ (must start with "P").');
     }
 
     // --- Validate every check digit before trusting any value ---
@@ -67,7 +67,7 @@ class MrzParser {
 
   static void _verify(String name, String field, String checkChar) {
     if (!isCheckDigitValid(field, checkChar)) {
-      throw MrzParserException('Check digit failed for $name');
+      throw MrzParseException('Check digit failed for $name');
     }
   }
 
@@ -95,7 +95,7 @@ class MrzParser {
     final mm = int.tryParse(yymmdd.substring(2, 4));
     final dd = int.tryParse(yymmdd.substring(4, 6));
     if (yy == null || mm == null || dd == null) {
-      throw MrzParserException('Invalida date: "$yymmdd"');
+      throw MrzParseException('Invalida date: "$yymmdd"');
     }
 
     var year = 2000 + yy;
@@ -105,7 +105,7 @@ class MrzParser {
     final date = DateTime.utc(year, mm, dd);
     // DateTime silently rolls 31 Feb into 3 Mar, so we check it didn't
     if (date.month != mm || date.day != dd) {
-      throw MrzParserException('Invalid date: "$yymmdd"');
+      throw MrzParseException('Invalid date: "$yymmdd"');
     }
 
     return date;
