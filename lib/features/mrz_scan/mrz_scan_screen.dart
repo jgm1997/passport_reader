@@ -2,8 +2,12 @@ import 'dart:io';
 
 import 'package:camera/camera.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:google_mlkit_text_recognition/google_mlkit_text_recognition.dart';
+import 'package:passport_reader/core/mrz/mrz_key.dart';
 import 'package:passport_reader/core/mrz/mrz_ocr_extractor.dart';
+import 'package:passport_reader/features/mrz_entry/manual_entry_screen.dart';
+import 'package:passport_reader/features/mrz_scan/camera_frame_converter.dart';
 import 'package:passport_reader/features/nfc/ready_to_scan_screen.dart';
 
 class MrzScanScreen extends StatefulWidget {
@@ -15,25 +19,29 @@ class MrzScanScreen extends StatefulWidget {
 
 class _MrzScanScreenState extends State<MrzScanScreen>
     with WidgetsBindingObserver {
+  static const _minFrameInterval = Duration(milliseconds: 300);
   final _recognizer = TextRecognizer(script: TextRecognitionScript.latin);
 
   CameraController? _controller;
   bool _initializing = false;
-  bool _busy = false;
+  bool _processing = false;
+  bool _done = false;
+  DateTime _lastFrameAt = DateTime.fromMillisecondsSinceEpoch(0);
+  String? _lastCandidate;
   String? _error;
-  String _hint =
-      'Fit the two lines at the bottom of the photo page inside the frame.';
 
   @override
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
+    SystemChrome.setPreferredOrientations([DeviceOrientation.portraitUp]);
     _initCamera();
   }
 
   @override
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
+    SystemChrome.setPreferredOrientations(DeviceOrientation.values);
     _controller?.dispose();
     _recognizer.close();
     super.dispose();
@@ -57,11 +65,15 @@ class _MrzScanScreenState extends State<MrzScanScreen>
 
       final controller = CameraController(
         back,
-        ResolutionPreset.high,
+        ResolutionPreset.veryHigh,
         enableAudio: false,
+        imageFormatGroup: Platform.isIOS
+            ? ImageFormatGroup.bgra8888
+            : ImageFormatGroup.nv21,
       );
       await controller.initialize();
-      await controller.lockCaptureOrientation();
+      await controller.lockCaptureOrientation(DeviceOrientation.portraitUp);
+      await controller.startImageStream((image) => _onFrame(controller, image));
 
       if (!mounted) {
         await controller.dispose();
@@ -86,7 +98,8 @@ class _MrzScanScreenState extends State<MrzScanScreen>
       }
     } else if (state == AppLifecycleState.resumed &&
         _controller == null &&
-        _error == null) {
+        _error == null &&
+        !_done) {
       _initCamera();
     }
   }
@@ -103,52 +116,75 @@ class _MrzScanScreenState extends State<MrzScanScreen>
     }
   }
 
-  // --- Capture and OCR ---
-  Future<void> _capture() async {
-    final controller = _controller;
-    if (controller == null || _busy) return;
+  // --- Frame processing ---
+  Future<void> _onFrame(CameraController controller, CameraImage image) async {
+    // 1. Drop frames we don't want to process
+    if (_processing || _done || !mounted) return;
+    if (_controller != null && !identical(controller, _controller)) return;
 
-    setState(() {
-      _busy = true;
-      _hint = 'Reading...';
-    });
+    final now = DateTime.now();
+    if (now.difference(_lastFrameAt) < _minFrameInterval) return;
 
-    XFile? photo;
+    _processing = true;
+    _lastFrameAt = now;
+
     try {
-      photo = await controller.takePicture();
-      final input = InputImage.fromFilePath(photo.path);
-      final recognized = await _recognizer.processImage(input);
+      // 2. Covert and recognize
+      final input = inputImageFromCameraImage(
+        image,
+        camera: controller.description,
+        deviceOrientation: controller.value.deviceOrientation,
+      );
+      if (input == null) return;
 
+      final recognized = await _recognizer.processImage(input);
       final lines = [
         for (final block in recognized.blocks)
           for (final line in block.lines) line.text,
       ];
-      final mrzKey = MrzOcrExtractor.extract(lines);
 
-      if (!mounted) return;
-      if (mrzKey == null) {
-        setState(
-          () => _hint = 'MRZ not found. Hold the phone steady, avoid glare, and try again',
-        );
+      // 3. Extract, then require two matching frames in a row
+      final key = MrzOcrExtractor.extract(lines);
+      if (key == null || !mounted || _done) return;
+
+      final fingerprint =
+          '${key.documentNumber}|${key.dateOfBirth}|${key.dateOfExpiry}';
+      if (fingerprint != _lastCandidate) {
+        _lastCandidate = fingerprint;
         return;
       }
 
-      Navigator.of(context).pushReplacement(
-        MaterialPageRoute(builder: (_) => ReadyToScanScreen(mrzKey: mrzKey)),
-      );
-    } on CameraException catch (e) {
-      if (mounted) setState(() => _hint = _describeCameraError(e));
+      await _finish(controller, key);
+    } catch (e) {
+      // One bad frame must not kill the scanner. Log the type, never the content.
+      debugPrint('MRZ frame skipped: ${e.runtimeType}');
     } finally {
-      // The photo contains the whole passport page: never leave it on disk
-      if (photo != null) {
-        try {
-          await File(photo.path).delete();
-        } catch (_) {
-          // Already gone or not deletable: nothing else we can do.
-        }
-      }
-      if (mounted) setState(() => _busy = false);
+      _processing = false;
     }
+  }
+
+  Future<void> _finish(CameraController controller, MrzKey key) async {
+    _done = true;
+    _lastCandidate = null;
+    HapticFeedback.mediumImpact();
+
+    try {
+      await controller.stopImageStream();
+    } catch (_) {
+      // Already stopped or disposed: fine, we're leaving anyway
+    }
+    if (!mounted) return;
+
+    Navigator.of(context).pushReplacement(
+      MaterialPageRoute(builder: (_) => ReadyToScanScreen(mrzKey: key)),
+    );
+  }
+
+  void _enterManually() {
+    _done = true;
+    Navigator.of(context).pushReplacement(
+      MaterialPageRoute(builder: (_) => const ManualEntryScreen()),
+    );
   }
 
   // --- UI ---
@@ -181,6 +217,10 @@ class _MrzScanScreenState extends State<MrzScanScreen>
           ),
           const SizedBox(height: 24),
           FilledButton(onPressed: _initCamera, child: const Text('Try again')),
+          TextButton(
+            onPressed: _enterManually,
+            child: const Text('Enter details manually'),
+          ),
         ],
       ),
     );
@@ -204,21 +244,26 @@ class _MrzScanScreenState extends State<MrzScanScreen>
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              Text(
-                _hint,
-                textAlign: TextAlign.center,
-                style: const TextStyle(color: Colors.white),
+              const Row(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  SizedBox.square(
+                    dimension: 16,
+                    child: CircularProgressIndicator(strokeWidth: 2),
+                  ),
+                  SizedBox(width: 12),
+                  Flexible(
+                    child: Text(
+                      'Looking for MRZ... hold steady and avoid glare.',
+                      style: TextStyle(color: Colors.white),
+                    ),
+                  ),
+                ],
               ),
-              const SizedBox(height: 16),
-              FilledButton.icon(
-                onPressed: _busy ? null : _capture,
-                icon: _busy
-                    ? const SizedBox.square(
-                        dimension: 18,
-                        child: CircularProgressIndicator(strokeWidth: 2),
-                      )
-                    : const Icon(Icons.camera_alt_outlined),
-                label: Text(_busy ? 'Reading...' : 'Capture'),
+              const SizedBox(height: 8),
+              TextButton(
+                onPressed: _enterManually,
+                child: const Text('Enter details manually instead'),
               ),
             ],
           ),
