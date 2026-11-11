@@ -22,12 +22,14 @@ class MrzKey {
   bool isExpired([DateTime? now]) =>
       dateOfExpiry.isBefore(now ?? DateTime.now());
 
-  /// shows only the first and last characters "L********3"
-  String get maskedDocumentNumber {
-    final n = documentNumber.length;
+  String maskDocumentNumber(String number) {
+    final n = number.length;
     if (n <= 2) return '*' * n;
-    return '${documentNumber[0]}${'*' * (n - 2)}${documentNumber[n - 1]}';
+    return '${number[0]}${'*' * (n - 2)}${number[n - 1]}';
   }
+
+  /// shows only the first and last characters "L********3"
+  String get maskedDocumentNumber => maskDocumentNumber(documentNumber);
 
   /// Never print the real document number, even in logs
   @override
