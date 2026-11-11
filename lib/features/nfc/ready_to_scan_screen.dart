@@ -55,7 +55,9 @@ class ReadyToScanScreen extends StatelessWidget {
               ],
               const Spacer(),
               FilledButton.icon(
-                onPressed: null,
+                onPressed: () => ScaffoldMessenger.of(context).showSnackBar(
+                  SnackBar(content: Text('NFC chip scan not yet implemented.')),
+                ),
                 icon: const Icon(Icons.contactless_outlined),
                 label: const Text('Start chip read'),
               ),

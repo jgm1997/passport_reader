@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:passport_reader/features/mrz_entry/manual_entry_screen.dart';
+import 'package:passport_reader/features/mrz_scan/mrz_scan_screen.dart';
 
 class HomeScreen extends StatelessWidget {
   const HomeScreen({super.key});
@@ -33,11 +34,9 @@ class HomeScreen extends StatelessWidget {
               ),
               const Spacer(),
               FilledButton.icon(
-                onPressed: () => ScaffoldMessenger.of(context)
-                  ..hideCurrentSnackBar()
-                  ..showSnackBar(
-                    const SnackBar(content: Text('Scan not implmeneted')),
-                  ),
+                onPressed: () => Navigator.of(context).push(
+                  MaterialPageRoute(builder: (_) => const MrzScanScreen()),
+                ),
                 icon: const Icon(Icons.camera_alt_outlined),
                 label: const Text('Scan MRZ with camera'),
               ),
