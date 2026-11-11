@@ -37,6 +37,10 @@ dependencies:
   camera: ^0.12.2
   google_mlkit_text_recognition: ^1.0.1
   google_mlkit_commons: ^1.0.2
+  dmrtd:
+    git:
+      url: https://github.com/ZeroPass/dmrtd.git
+      ref: 3b6c091843573b275ae68a87335e1872f8b60ea0
 
 dev_dependencies:
   flutter_test:
