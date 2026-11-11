@@ -61,6 +61,7 @@ class _MrzScanScreenState extends State<MrzScanScreen>
         enableAudio: false,
       );
       await controller.initialize();
+      await controller.lockCaptureOrientation();
 
       if (!mounted) {
         await controller.dispose();
