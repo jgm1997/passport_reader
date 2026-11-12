@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:passport_reader/core/mrz/mrz_key.dart';
 import 'package:passport_reader/core/mrz/utils/date_format.dart';
@@ -71,6 +72,17 @@ class PassportResultScreen extends StatelessWidget {
               },
             ),
             const SizedBox(height: 12),
+            if (kDebugMode) ...[
+              _Section(
+                title: 'Read timing (debug)',
+                rows: {
+                  for (final e in data.stageTimings.entries)
+                    e.key: '${e.value.inMilliseconds} ms',
+                  'Total': '${data.totalReadTime.inMilliseconds} ms',
+                },
+              ),
+              const SizedBox(height: 12),
+            ],
             FilledButton(
               onPressed: () =>
                   Navigator.of(context).popUntil((route) => route.isFirst),
