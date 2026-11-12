@@ -1,6 +1,4 @@
 // --- Progress ---
-import 'dart:typed_data';
-
 import 'package:dmrtd/dmrtd.dart';
 import 'package:flutter/foundation.dart';
 import 'package:passport_reader/core/mrz/mrz_key.dart';
@@ -67,8 +65,11 @@ class PassportReader {
     ReadProgressCallback? onProgress,
     Duration pollTimeout = const Duration(seconds: 30),
   }) async {
-    void report(ReadStage stage, double progress) =>
-        onProgress?.call(stage, progress);
+    var stage = ReadStage.waitingForPassport;
+    void report(ReadStage s, double progress) {
+      stage = s;
+      onProgress?.call(stage, progress);
+    }
 
     final status = await NfcProvider.nfcStatus;
     if (status == NfcStatus.notSupported) {
@@ -143,6 +144,13 @@ class PassportReader {
       iosErrorMessage = e.failure.message;
       rethrow;
     } catch (e) {
+      // Debug builds only. Error text from the chip constains status codes,
+      // never personal data, but even so it must not ship in release builds
+      if (kDebugMode) {
+        debugPrint(
+          'Chip read failed during ${stage.name}: ${e.runtimeType}: $e',
+        );
+      }
       final failure = classifyError(e);
       iosErrorMessage = failure.message;
       throw PassportReadException(failure);
@@ -225,13 +233,20 @@ class PassportReader {
 
   /// dmrtd reports errors as text, so we classify them by their wording
   @visibleForTesting
-  static PassportReadFailure classifyError(Object error) {
+  static PassportReadFailure classifyError(
+    Object error, {
+    ReadStage stage = ReadStage.waitingForPassport,
+  }) {
     final text = error.toString().toLowerCase();
     if (text.contains('security status not satisfied')) {
       return PassportReadFailure.wrongKey;
     }
     if (text.contains('timeout')) {
-      return PassportReadFailure.timeout;
+      // Before a chip is found, a timeout means "nothing there".
+      // After that, it means the connection dropped mid-read.
+      return stage == ReadStage.waitingForPassport
+          ? PassportReadFailure.timeout
+          : PassportReadFailure.tagLost;
     }
     if (text.contains('tag was lost') || text.contains('transceive')) {
       return PassportReadFailure.tagLost;

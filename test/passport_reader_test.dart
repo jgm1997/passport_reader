@@ -20,4 +20,13 @@ void main() {
       PassportReadFailure.unknown,
     );
   });
+  test('a timeout after the chip was found means the connection dropped', () {
+    expect(
+      PassportReader.classifyError(
+        Exception('Transceive timeout'),
+        stage: ReadStage.readingPhoto,
+      ),
+      PassportReadFailure.tagLost,
+    );
+  });
 }
