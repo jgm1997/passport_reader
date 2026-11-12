@@ -3,6 +3,7 @@ import 'package:passport_reader/core/mrz/mrz_key.dart';
 import 'package:passport_reader/core/mrz/utils/date_format.dart';
 import 'package:passport_reader/core/passport/consistency.dart';
 import 'package:passport_reader/core/passport/passport_data.dart';
+import 'package:passport_reader/features/result/face_photo.dart';
 
 class PassportResultScreen extends StatelessWidget {
   final MrzKey mrzKey;
@@ -29,6 +30,10 @@ class PassportResultScreen extends StatelessWidget {
           children: [
             _ConsistencyBanner(mismatches: mismatches),
             const SizedBox(height: 12),
+            if (photo != null) ...[
+              FacePhoto(bytes: photo),
+              const SizedBox(height: 12),
+            ],
             _Section(
               title: 'Holder',
               rows: {
