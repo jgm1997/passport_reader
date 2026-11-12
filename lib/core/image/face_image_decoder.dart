@@ -38,8 +38,13 @@ RgbaImage jpeg2000ToRgba(Uint8List bytes) {
         components: image.components,
       ),
     );
+  } on FaceImageException {
+    rethrow; // Our own error from expandToRgba: already the right type.
   } on Jpeg2000Exception catch (e) {
     throw FaceImageException('JPEG2000 decode failed (${e.runtimeType})');
+  } catch (e) {
+    // A decoder bug triggered by hostile input (e.g. RangeError).
+    throw FaceImageException('Unexpected decoder failure (${e.runtimeType})');
   }
 }
 
