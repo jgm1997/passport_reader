@@ -29,6 +29,10 @@ class PassportData {
   final Uint8List? photo;
   final PhotoFormat? photoFormat;
 
+  /// How long each read stage took, by stage name. Diagnostics only
+  final Map<String, Duration> stageTimings;
+  final Duration totalReadTime;
+
   const PassportData({
     required this.accessProtocol,
     required this.documentNumber,
@@ -43,6 +47,8 @@ class PassportData {
     required this.rawSod,
     this.photo,
     this.photoFormat,
+    this.stageTimings = const {},
+    this.totalReadTime = Duration.zero,
   });
 
   /// Never print personal data, only the shape of what was read
