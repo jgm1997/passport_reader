@@ -65,10 +65,19 @@ class PassportReader {
     ReadProgressCallback? onProgress,
     Duration pollTimeout = const Duration(seconds: 30),
   }) async {
+    final stopwatch = Stopwatch()..start();
+    final timings = <String, Duration>{};
     var stage = ReadStage.waitingForPassport;
-    void report(ReadStage s, double progress) {
-      stage = s;
-      onProgress?.call(stage, progress);
+    var stageStart = Duration.zero;
+
+    void report(ReadStage next, double progress) {
+      final now = stopwatch.elapsed;
+      if (next != stage) {
+        timings[stage.name] = now - stageStart; // close the finished stage
+        stageStart = now;
+      }
+      stage = next;
+      onProgress?.call(next, progress);
     }
 
     final status = await NfcProvider.nfcStatus;
@@ -139,6 +148,8 @@ class PassportReader {
         rawSod: sod.toBytes(),
         photo: photo,
         photoFormat: photoFormat,
+        stageTimings: Map.unmodifiable(timings),
+        totalReadTime: stopwatch.elapsed,
       );
     } on PassportReadException catch (e) {
       iosErrorMessage = e.failure.message;
