@@ -225,6 +225,14 @@ packages:
       url: "https://pub.dev"
     source: hosted
     version: "1.0.1"
+  j2k:
+    dependency: "direct main"
+    description:
+      name: j2k
+      sha256: "2957b9be387157340fc06d32947c39f5180d6c57c56cc132ef28dee95f6c854a"
+      url: "https://pub.dev"
+    source: hosted
+    version: "1.0.0"
   js:
     dependency: transitive
     description:
