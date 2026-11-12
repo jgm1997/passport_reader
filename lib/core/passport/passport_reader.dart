@@ -187,7 +187,13 @@ class PassportReader {
     EfCardAccess? cardAccess;
     try {
       cardAccess = await passport.readEfCardAccess();
-    } on PassportError {
+    } catch (e) {
+      if (e is ComProviderError) rethrow; // Connection lost: stop here.
+      // Either the file doesn't exist (BAC-only chip) or dmrtd can't parse it
+      // (e.g. PACEInfo without the optional parameterId). Either way: use BAC.
+      if (kDebugMode) {
+        debugPrint('PACE unavailable (${e.runtimeType}), using BAC');
+      }
       cardAccess = null; // No EF.CardAccess: this chip only supports BAC.
     }
 
