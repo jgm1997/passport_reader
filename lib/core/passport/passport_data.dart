@@ -55,4 +55,23 @@ class PassportData {
   @override
   String toString() =>
       'PassportData(${accessProtocol.name}, DGs ${rawDataGroups.keys.toList()})';
+
+  /// Best-effort erase of the byte buffers this object owns.
+  /// Strings can't be erased in Dart; they're released when unreferenced.
+  void wipe() {
+    for (final bytes in rawDataGroups.values) {
+      _zero(bytes);
+    }
+    _zero(rawSod);
+    final p = photo;
+    if (p != null) _zero(p);
+  }
+
+  static void _zero(Uint8List bytes) {
+    try {
+      bytes.fillRange(0, bytes.length, 0);
+    } on UnsupportedError {
+      // A read-only view: nothing we can overwrite
+    }
+  }
 }

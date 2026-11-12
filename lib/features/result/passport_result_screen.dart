@@ -6,7 +6,7 @@ import 'package:passport_reader/core/passport/consistency.dart';
 import 'package:passport_reader/core/passport/passport_data.dart';
 import 'package:passport_reader/features/result/face_photo.dart';
 
-class PassportResultScreen extends StatelessWidget {
+class PassportResultScreen extends StatefulWidget {
   final MrzKey mrzKey;
   final PassportData data;
 
@@ -16,10 +16,23 @@ class PassportResultScreen extends StatelessWidget {
     required this.data,
   });
 
+  @override
+  State<PassportResultScreen> createState() => _PassportResultScreenState();
+}
+
+class _PassportResultScreenState extends State<PassportResultScreen> {
   String _kb(int bytes) => '${(bytes / 1024).toStringAsFixed(1)} KB';
 
   @override
+  void dispose() {
+    widget.data.wipe(); // The user left the result: erase when we can.
+    super.dispose();
+  }
+
+  @override
   Widget build(BuildContext context) {
+    final data = widget.data;
+    final mrzKey = widget.mrzKey;
     final mismatches = findMismatches(data, mrzKey);
     final photo = data.photo;
 
