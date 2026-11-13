@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from pathlib import Path
+from typing import Any, ClassVar
 
 from asn1crypto import cms, core
 from asn1crypto import x509 as asn1_x509
@@ -18,7 +19,10 @@ class _CertificateSet(core.SetOf):
 
 
 class CscaMasterList(core.Sequence):
-    _fields = [("version", core.Integer), ("cert_list", _CertificateSet)]
+    _fields: ClassVar[list[tuple[Any, ...]]] = [
+        ("version", core.Integer),
+        ("cert_list", _CertificateSet),
+    ]
 
 
 def country_of(name: x509.Name) -> str | None:
