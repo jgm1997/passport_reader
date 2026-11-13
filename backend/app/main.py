@@ -3,8 +3,8 @@
 import logging
 import os
 
-from backend.app.api import create_app
-from backend.app.trust_store import TrustStore
+from app.api import create_app
+from app.trust_store import TrustStore
 
 logging.basicConfig(level=logging.INFO)
 

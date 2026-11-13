@@ -10,8 +10,8 @@ from typing import Annotated
 from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel, ConfigDict, Field, StringConstraints
 
-from backend.app.passive_auth import verify_passive_auth
-from backend.app.trust_store import TrustStore
+from app.passive_auth import verify_passive_auth
+from app.trust_store import TrustStore
 
 MAX_FILE_BYTES = 64 * 1024  # No SOD, DG1, DG15 or DG15 is anywhere near this size
 MAX_B64_CHARS = 90_000  # 64 KiB encoded as base64, rounded up
@@ -56,7 +56,7 @@ def create_app(trust: TrustStore) -> FastAPI:
     def health() -> dict:
         return {"status": "ok", "cscaCertificates": len(trust)}
 
-    @app.post("/vi/passive-auth", response_model=VerifyResponse)
+    @app.post("/v1/passive-auth", response_model=VerifyResponse)
     def passive_auth(request: VerifyRequest) -> VerifyResponse:
         groups: dict[int, bytes] = {}
         for number, value in request.data_groups.items():

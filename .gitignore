@@ -26,6 +26,9 @@ migrate_working_dir/
 # Claude-related
 .claude/
 
+# Backend: CSCA trust anchors (master lists / certificates) are provisioned locally
+/backend/trust/
+
 # Flutter/Dart/Pub related
 **/doc/api/
 **/ios/Flutter/.last_build_id

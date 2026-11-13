@@ -22,7 +22,7 @@ from cryptography.exceptions import InvalidSignature
 from cryptography.hazmat.primitives import hashes
 from cryptography.hazmat.primitives.asymmetric import ec, padding, rsa
 
-from backend.app.trust_store import TrustStore, country_of
+from app.trust_store import TrustStore, country_of
 
 LDS_SECURITY_OBJECT = "2.23.136.1.1.1"
 
@@ -165,7 +165,7 @@ def _load_signed_data(sod: bytes) -> cms.SignedData:
     if class_ == 1 and tag == 23:  # EF.SOD wraps the CMS in [APPLICATION 23] (0x77)
         sod = contents
     info = cms.ContentInfo.load(sod, strict=True)
-    if info["content-type"].native != "signed_data":
+    if info["content_type"].native != "signed_data":
         raise PassiveAuthError("not a CMS SignedData structure")
     return info["content"]
 

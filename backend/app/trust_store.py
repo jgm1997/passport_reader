@@ -52,7 +52,7 @@ class TrustStore:
     def find_issuer(self, cert: x509.Certificate) -> x509.Certificate | None:
         """Returns the trusted CSCA whose key signed `cert`, or None."""
         for csca in self._cscas:
-            if csca.subject != cert.subject:
+            if csca.subject != cert.issuer:
                 continue
             try:
                 cert.verify_directly_issued_by(csca)
@@ -63,8 +63,15 @@ class TrustStore:
 
     @classmethod
     def from_directory(cls, path: str | Path) -> TrustStore:
+        directory = Path(path)
+        if not directory.is_dir():
+            raise FileNotFoundError(
+                f"trust directory '{directory}' not found (resolved to "
+                f"'{directory.resolve()}'); create it and add CSCA master lists "
+                "(.ml) or certificates, or set TRUST_DIR to point at one"
+            )
         certs: list[x509.Certificate] = []
-        for file in sorted(Path(path).iterdir()):
+        for file in sorted(directory.iterdir()):
             data = file.read_bytes()
             suffix = file.suffix.lower()
             if suffix == ".ml":
