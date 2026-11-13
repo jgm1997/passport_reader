@@ -2,16 +2,29 @@
 
 from __future__ import annotations
 
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any, ClassVar
 
-from asn1crypto import cms, core
+from asn1crypto import core
 from asn1crypto import x509 as asn1_x509
 from cryptography import x509
 from cryptography.exceptions import InvalidSignature
 from cryptography.x509.oid import NameOID
 
+from backend.app.cms_verify import (
+    CmsError,
+    encapsulated_content,
+    load_signed_data,
+    signer_and_certificate,
+    verify_signer,
+)
+
 CSCA_MASTER_LIST = "2.23.136.1.1.2"
+
+
+class MasterListError(Exception):
+    """A master list is malformed or can't be trusted."""
 
 
 class _CertificateSet(core.SetOf):
@@ -30,11 +43,41 @@ def country_of(name: x509.Name) -> str | None:
     return str(values[0].value).upper() if values else None
 
 
+def issued_by(cert: x509.Certificate, issuer: x509.Certificate):
+    """True if `issuer`'key really signed `cert` (names AND signature must match)."""
+    if cert.issuer != issuer.subject:
+        return False
+    try:
+        cert.verify_directly_issued_by(issuer)
+        return True
+    except (ValueError, TypeError, InvalidSignature):
+        return False
+
+
 def _is_ca(cert: x509.Certificate) -> bool:
     try:
         return cert.extensions.get_extension_for_class(x509.BasicConstraints).value.ca
     except (x509.ExtensionNotFound, ValueError):
         return False
+
+
+def load_certificates_from_file(file: Path) -> list[x509.Certificate]:
+    data = file.read_bytes()
+    if data.lstrip().startswith(b"-----BEGIN"):
+        return x509.load_pem_x509_certificates(data)
+    if file.suffix.lower() in {"der", ".cer", ".crt"}:
+        return [x509.load_der_x509_certificate(data)]
+    return []
+
+
+def load_certificates(path: str | Path) -> list[x509.Certificate]:
+    """Loads every PEM/DER certificate file in a folder."""
+    return [
+        cert
+        for file in sorted(Path(path).iterdir())
+        if file.is_file()
+        for cert in load_certificates_from_file(file)
+    ]
 
 
 class TrustStore:
@@ -46,60 +89,86 @@ class TrustStore:
         return len(self._cscas)
 
     @property
+    def certificates(self) -> list[x509.Certificate]:
+        return list(self._cscas)
+
+    @property
     def countries(self) -> set[str]:
         return {c for c in (country_of(cert.subject) for cert in self._cscas) if c}
 
     def find_issuer(self, cert: x509.Certificate) -> x509.Certificate | None:
-        """Returns the trusted CSCA whose key signed `cert`, or None."""
-        for csca in self._cscas:
-            if csca.subject != cert.issuer:
-                continue
-            try:
-                cert.verify_directly_issued_by(csca)
-                return csca
-            except (ValueError, TypeError, InvalidSignature):
-                continue  # Same name, different key (e.g. CSCA rollover): keep looking.
-        return None
+        """
+        Returns the trusted CSCA whose key signed `cert`, or None.
+        Several CSCAs can share a name (key rollover), so we try each one.
+        """
+        return next((csca for csca in self._cscas if issued_by(cert, csca)), None)
 
     @classmethod
-    def from_directory(cls, path: str | Path) -> TrustStore:
-        directory = Path(path)
-        if not directory.is_dir():
-            raise FileNotFoundError(
-                f"trust directory '{directory}' not found (resolved to "
-                f"'{directory.resolve()}'); create it and add CSCA master lists "
-                "(.ml) or certificates, or set TRUST_DIR to point at one"
-            )
+    def from_directory(
+        cls,
+        path: str | Path,
+        ml_anchors: list[x509.Certificate] | None = None,
+        allow_unverified_master_lists: bool = False,
+    ) -> TrustStore:
         certs: list[x509.Certificate] = []
-        for file in sorted(directory.iterdir()):
-            data = file.read_bytes()
-            suffix = file.suffix.lower()
-            if suffix == ".ml":
-                certs += load_master_list(data)
-            elif data.lstrip().startswith(b"-----BEGIN"):
-                certs += x509.load_pem_x509_certificates(data)
-            elif suffix in {".der", ".cer", ".crt"}:
-                certs.append(x509.load_der_x509_certificate(data))
+        for file in sorted(Path(path).iterdir()):
+            if file.suffix.lower() == ".ml":
+                if ml_anchors is None and not allow_unverified_master_lists:
+                    raise MasterListError(
+                        f"{file.name}: refusing an unverified master list. Put the signer's "
+                        "root certificate in anchors/ (or set ALLOW_UNVERIFIED_MASTER_LISTS=1)"
+                    )
+                try:
+                    certs += load_master_list(file.read_bytes(), ml_anchors)
+                except MasterListError as e:
+                    raise MasterListError(f"{file.name}: {e}") from e
+            elif file.is_file():
+                certs += load_certificates_from_file(file)
         return cls(certs)
 
 
-def load_master_list(data: bytes) -> list[x509.Certificate]:
+def load_master_list(
+    data: bytes, anchors: list[x509.Certificate] | None, now: datetime | None = None
+) -> list[x509.Certificate]:
     """
     Extracts CSCA certificates from an ICAO CSCA Master List (.ml).
 
-    WARNING: this does not verify the master list's own signature, so you are
-    trusting the channel you downloaded it from.
+    With `anchors`, the list's signature must verify and its signer must have been
+    issued by one of the anchors. With `anchors=None` nothing is verified, so you
+    are trusting the channel you downloaded the file from.
     """
-    info = cms.ContentInfo.load(data)
-    encap = info["content"]["encap_content_info"]
-    if encap["content_type"].dotted != CSCA_MASTER_LIST:
-        raise ValueError("not a CSCA Master List")
-    master_list = CscaMasterList.load(encap["content"].native)
+    try:
+        signed = load_signed_data(data)
+        content = encapsulated_content(signed, CSCA_MASTER_LIST)
+        if anchors is not None:
+            _verify_master_list_signer(
+                signed, content, anchors, now or datetime.now(UTC)
+            )
+        master_list = CscaMasterList.load(content, strict=True)
+        entries = list(master_list["cert_list"])
+    except (CmsError, ValueError, TypeError, KeyError) as e:
+        raise MasterListError(f"invalid master list: {e}") from e
 
     certs = []
-    for entry in master_list["cert_list"]:
+    for entry in entries:
         try:
-            certs.append(x509.load_der_x509_certificate(entry.dump()))
+            certs.append(x509.load_pem_x509_certificate(entry.dump()))
         except ValueError:
             continue  # e.g. explicit EC curve parameters, unsupported by `cryptography`
     return certs
+
+
+def _verify_master_list_signer(
+    signed, content: bytes, anchors: list[x509.Certificate], now: datetime
+) -> None:
+    signer, signer_cert = signer_and_certificate(signed)
+    try:
+        verify_signer(signer, content, CSCA_MASTER_LIST, signer_cert)
+    except InvalidSignature as e:
+        raise MasterListError("master list signature is invalid") from e
+    if not signer_cert.not_valid_before_utc <= now <= signer_cert.not_valid_after_utc:
+        raise MasterListError(
+            "master list signer certificate is outside its validity period"
+        )
+    if not any(issued_by(signer_cert, anchor) for anchor in anchors):
+        raise MasterListError("master list was not signed by a trusted anchor")
