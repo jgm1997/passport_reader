@@ -88,7 +88,7 @@ def public_key_of(cert: x509.Certificate):
     except UnsupportedAlgorithm:
         der = cert.public_bytes(serialization.Encoding.DER)
         spki_der = asn1_x509.Certificate.load(der)["tbs_certificate"][
-            "sublect_public_key_info"
+            "subject_public_key_info"
         ].dump()
         name, point = match_explicit_curve(spki_der)
         return ec.EllipticCurvePublicKey.from_encoded_point(
