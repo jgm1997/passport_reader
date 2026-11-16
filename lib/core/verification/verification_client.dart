@@ -83,7 +83,7 @@ class VerificationClient {
     try {
       response = await _http
           .post(
-            _baseUri.resolve('/v1/pasive-auth'),
+            _baseUri.resolve('/v1/passive-auth'),
             headers: {'Content-Type': 'application/json'},
             body: body,
           )
