@@ -56,7 +56,7 @@ class CrlStore:
         ):
             return RevocationStatus.REVOKED
         newest = max(trusted, key=lambda crl: crl.last_update_utc)
-        if newest.next_update_utc is not None or now > newest.next_update_utc:
+        if newest.next_update_utc is None or now > newest.next_update_utc:
             return RevocationStatus.STALE
         return RevocationStatus.GOOD
 

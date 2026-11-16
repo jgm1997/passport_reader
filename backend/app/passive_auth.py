@@ -19,8 +19,7 @@ from asn1crypto import algos, core, parser
 from cryptography import x509
 from cryptography.exceptions import InvalidSignature
 
-from app.trust_store import TrustStore, country_of
-from backend.app.cms_verify import (
+from app.cms_verify import (
     HASHES,
     CmsError,
     encapsulated_content,
@@ -28,7 +27,8 @@ from backend.app.cms_verify import (
     signer_and_certificate,
     verify_signer,
 )
-from backend.app.revocation import CrlStore, RevocationStatus
+from app.revocation import CrlStore, RevocationStatus
+from app.trust_store import TrustStore, country_of
 
 LDS_SECURITY_OBJECT = "2.23.136.1.1.1"
 
@@ -148,7 +148,6 @@ def verify_passive_auth(
     if 1 not in result.verified_data_groups:
         result.failures.append("DG1 (the holder's details) was not verified")
 
-    result.warnings.append("certificate revocation (CRL) was not checked")
     result.valid = not result.failures
     if result.valid:
         result.authenticated_hashes = expected

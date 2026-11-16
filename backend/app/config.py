@@ -5,8 +5,8 @@ from collections.abc import Mapping
 from dataclasses import dataclass
 from pathlib import Path
 
-from backend.app.revocation import CrlStore
-from backend.app.trust_store import TrustStore, load_certificates
+from app.revocation import CrlStore
+from app.trust_store import TrustStore, load_certificates
 
 
 @dataclass(frozen=True)

@@ -12,7 +12,7 @@ from cryptography import x509
 from cryptography.exceptions import InvalidSignature
 from cryptography.x509.oid import NameOID
 
-from backend.app.cms_verify import (
+from app.cms_verify import (
     CmsError,
     encapsulated_content,
     load_signed_data,
@@ -152,7 +152,7 @@ def load_master_list(
     certs = []
     for entry in entries:
         try:
-            certs.append(x509.load_pem_x509_certificate(entry.dump()))
+            certs.append(x509.load_der_x509_certificate(entry.dump()))
         except ValueError:
             continue  # e.g. explicit EC curve parameters, unsupported by `cryptography`
     return certs

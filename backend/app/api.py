@@ -11,8 +11,8 @@ from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel, ConfigDict, Field, StringConstraints
 
 from app.passive_auth import verify_passive_auth
+from app.revocation import CrlStore
 from app.trust_store import TrustStore
-from backend.app.revocation import CrlStore
 
 MAX_FILE_BYTES = 64 * 1024  # No SOD, DG1, DG15 or DG15 is anywhere near this size
 MAX_B64_CHARS = 90_000  # 64 KiB encoded as base64, rounded up

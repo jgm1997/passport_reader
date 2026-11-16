@@ -45,7 +45,7 @@ def signer_and_certificate(
 ) -> tuple[cms.SignerInfo, x509.Certificate]:
     signers = signed_data["signer_infos"]
     if len(signers) != 1:
-        return CmsError(f"expected exactly 1, found {len(signers)}")
+        raise CmsError(f"expected exactly 1 signer, found {len(signers)}")
     signer = signers[0]
 
     certificates = signed_data["certificates"]
@@ -85,7 +85,7 @@ def verify_signer(
 def _check_signed_attributes(
     signer: cms.SignerInfo, content: bytes, content_type: str
 ) -> None:
-    attrs = signer["signed_data"]
+    attrs = signer["signed_attrs"]
     if isinstance(attrs, core.Void) or len(attrs) == 0:
         raise CmsError("no signed attributes")
 

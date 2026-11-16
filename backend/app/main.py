@@ -3,7 +3,7 @@
 import logging
 
 from app.api import create_app
-from backend.app.config import load_settings
+from app.config import load_settings
 
 logging.basicConfig(level=logging.INFO)
 log = logging.getLogger("passport.verify")
