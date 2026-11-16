@@ -22,7 +22,7 @@ class CrlStore:
         return len(self._crls)
 
     @classmethod
-    def from_directoty(cls, path: str | Path) -> "CrlStore":
+    def from_directory(cls, path: str | Path) -> "CrlStore":
         folder = Path(path)
         if not folder.is_dir():
             return cls([])
