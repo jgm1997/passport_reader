@@ -1,16 +1,23 @@
 """Entry point: `uvicorn app.main:app`"""
 
 import logging
-import os
 
 from app.api import create_app
-from app.trust_store import TrustStore
+from backend.app.config import load_settings
 
 logging.basicConfig(level=logging.INFO)
+log = logging.getLogger("passport.verify")
 
-trust = TrustStore.from_directory(os.environ.get("TRUST_DIR", "trust"))
-logging.getLogger("passport.verify").info(
-    "Loaded %d CSCA certificates for %d countries", len(trust), len(trust.countries)
+settings = load_settings()
+log.info(
+    "Loaded %d CSCA certificates for %d countries; %d CRLs",
+    len(settings.trust),
+    len(settings.trust.countries),
+    len(settings.crls),
 )
+if not settings.master_lists_verified:
+    log.warning("Master list signatures are NOT verified (no anchors/ folder)")
+if not settings.require_crl:
+    log.warning("REQUIRE_CRL is off: missing or stale CRLs are only warnings")
 
-app = create_app(trust)
+app = create_app(settings.trust, settings.crls, require_crl=settings.require_crl)
