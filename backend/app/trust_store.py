@@ -9,7 +9,7 @@ from typing import Any, ClassVar
 from asn1crypto import core
 from asn1crypto import x509 as asn1_x509
 from cryptography import x509
-from cryptography.exceptions import InvalidSignature
+from cryptography.exceptions import InvalidSignature, UnsupportedAlgorithm
 from cryptography.x509.oid import NameOID
 
 from app.cms_verify import (
@@ -19,6 +19,7 @@ from app.cms_verify import (
     signer_and_certificate,
     verify_signer,
 )
+from app.ec_keys import public_key_of, verify_certificate_signature
 
 CSCA_MASTER_LIST = "2.23.136.1.1.2"
 
@@ -48,9 +49,9 @@ def issued_by(cert: x509.Certificate, issuer: x509.Certificate):
     if cert.issuer != issuer.subject:
         return False
     try:
-        cert.verify_directly_issued_by(issuer)
+        verify_certificate_signature(cert, public_key_of(issuer))
         return True
-    except (ValueError, TypeError, InvalidSignature):
+    except (ValueError, TypeError, InvalidSignature, UnsupportedAlgorithm):
         return False
 
 

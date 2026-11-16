@@ -9,6 +9,8 @@ from cryptography import x509
 from cryptography.hazmat.primitives import hashes
 from cryptography.hazmat.primitives.asymmetric import ec, padding, rsa
 
+from app.ec_keys import public_key_of
+
 HASHES = {
     "sha1": hashes.SHA1,
     "sha224": hashes.SHA224,
@@ -79,7 +81,11 @@ def verify_signer(
 ) -> None:
     """Raises InvalidSignature or CmsError unless `cert` really signed `content`."""
     _check_signed_attributes(signer, content, content_type)
-    _verify_signature(cert.public_key(), signer)
+    try:
+        public_key = public_key_of(cert)
+    except ValueError as e:
+        raise CmsError(f"signer's public key is not supported: {e}") from e
+    _verify_signature(public_key, signer)
 
 
 def _check_signed_attributes(

@@ -5,6 +5,9 @@ from enum import Enum
 from pathlib import Path
 
 from cryptography import x509
+from cryptography.exceptions import UnsupportedAlgorithm
+
+from app.ec_keys import public_key_of
 
 
 class RevocationStatus(Enum):
@@ -63,6 +66,6 @@ class CrlStore:
 
 def _signed_by(crl: x509.CertificateRevocationList, issuer: x509.Certificate) -> bool:
     try:
-        return crl.is_signature_valid(issuer.public_key())
-    except (TypeError, ValueError):
+        return crl.is_signature_valid(public_key_of(issuer))
+    except (TypeError, ValueError, UnsupportedAlgorithm):
         return False
