@@ -12,6 +12,7 @@ from pydantic import BaseModel, ConfigDict, Field, StringConstraints
 
 from app.passive_auth import verify_passive_auth
 from app.trust_store import TrustStore
+from backend.app.revocation import CrlStore
 
 MAX_FILE_BYTES = 64 * 1024  # No SOD, DG1, DG15 or DG15 is anywhere near this size
 MAX_B64_CHARS = 90_000  # 64 KiB encoded as base64, rounded up
@@ -49,12 +50,19 @@ def _decode(value: str, label: str) -> bytes:
     return data
 
 
-def create_app(trust: TrustStore) -> FastAPI:
+def create_app(
+    trust: TrustStore, crls: CrlStore | None = None, require_crl: bool = False
+) -> FastAPI:
     app = FastAPI(title="Passport verification")
 
     @app.get("/health")
     def health() -> dict:
-        return {"status": "ok", "cscaCertificates": len(trust)}
+        return {
+            "status": "ok",
+            "cscaCertificates": len(trust),
+            "countries": len(trust.countries),
+            "crls": len(crls) if crls else 0,
+        }
 
     @app.post("/v1/passive-auth", response_model=VerifyResponse)
     def passive_auth(request: VerifyRequest) -> VerifyResponse:
@@ -68,7 +76,13 @@ def create_app(trust: TrustStore) -> FastAPI:
                 )
             groups[number] = _decode(value, f"DG{number}")
 
-        result = verify_passive_auth(_decode(request.sod, "SOD"), groups, trust)
+        result = verify_passive_auth(
+            _decode(request.sod, "SOD"),
+            groups,
+            trust,
+            crls=crls,
+            require_crl=require_crl,
+        )
 
         # Log the outcome only: never names, numbers or raw data.
         log.info(
