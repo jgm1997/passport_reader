@@ -4,6 +4,9 @@ import 'package:passport_reader/core/mrz/mrz_key.dart';
 import 'package:passport_reader/core/mrz/utils/date_format.dart';
 import 'package:passport_reader/core/passport/consistency.dart';
 import 'package:passport_reader/core/passport/passport_data.dart';
+import 'package:passport_reader/core/verification/photo_integrity.dart';
+import 'package:passport_reader/core/verification/verification_client.dart';
+import 'package:passport_reader/core/verification/verification_result.dart';
 import 'package:passport_reader/features/result/face_photo.dart';
 
 class PassportResultScreen extends StatefulWidget {
@@ -22,6 +25,28 @@ class PassportResultScreen extends StatefulWidget {
 
 class _PassportResultScreenState extends State<PassportResultScreen> {
   String _kb(int bytes) => '${(bytes / 1024).toStringAsFixed(1)} KB';
+  late final Future<VerificationResult> _verification;
+  bool? _photoSigned; // null untill known (or if there's no photo)
+
+  @override
+  void initState() {
+    super.initState();
+    _verification = _verify();
+  }
+
+  Future<VerificationResult> _verify() async {
+    final client = VerificationClient.fromEnvironment();
+    try {
+      final result = await client.verify(widget.data);
+      final dg2 = widget.data.rawDataGroups[2];
+      if (mounted && result.valid && dg2 != null) {
+        setState(() => _photoSigned = photoMatchesSignedHash(dg2, result));
+      }
+      return result;
+    } finally {
+      client.close();
+    }
+  }
 
   @override
   void dispose() {
@@ -35,6 +60,7 @@ class _PassportResultScreenState extends State<PassportResultScreen> {
     final mrzKey = widget.mrzKey;
     final mismatches = findMismatches(data, mrzKey);
     final photo = data.photo;
+    final photoSigned = _photoSigned;
 
     return Scaffold(
       appBar: AppBar(title: const Text('Chip read')),
@@ -42,10 +68,13 @@ class _PassportResultScreenState extends State<PassportResultScreen> {
         child: ListView(
           padding: const EdgeInsets.all(16),
           children: [
+            _VerificationBanner(future: _verification),
+            const SizedBox(height: 12),
             _ConsistencyBanner(mismatches: mismatches),
             const SizedBox(height: 12),
             if (photo != null) ...[
               FacePhoto(bytes: photo),
+              if (photoSigned != null) _PhotoBadge(signed: photoSigned),
               const SizedBox(height: 12),
             ],
             _Section(
@@ -166,6 +195,103 @@ class _Section extends StatelessWidget {
               ),
           ],
         ),
+      ),
+    );
+  }
+}
+
+class _VerificationBanner extends StatelessWidget {
+  final Future<VerificationResult> future;
+  const _VerificationBanner({required this.future});
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+
+    return FutureBuilder<VerificationResult>(
+      future: future,
+      builder: (context, snapshot) {
+        if (snapshot.connectionState != ConnectionState.done) {
+          return const Card(
+            child: ListTile(
+              leading: SizedBox.square(
+                dimension: 24,
+                child: CircularProgressIndicator(strokeWidth: 2),
+              ),
+            ),
+          );
+        }
+
+        if (snapshot.hasError) {
+          final error = snapshot.error;
+          return Card(
+            color: scheme.surfaceContainerHighest,
+            child: ListTile(
+              leading: const Icon(Icons.cloud_off_outlined),
+              title: const Text('Not verified'),
+              subtitle: Text(
+                error is VerificationException
+                    ? error.failure.message
+                    : 'Verification could not be completed.',
+              ),
+            ),
+          );
+        }
+
+        final result = snapshot.requireData;
+        if (result.valid) {
+          return Card(
+            color: scheme.primaryContainer,
+            child: ListTile(
+              leading: const Icon(Icons.verified_outlined),
+              title: Text(
+                'Verified by ${result.issuingCountry ?? 'issuing country'}',
+              ),
+              subtitle: result.warnings.isEmpty
+                  ? null
+                  : Text(result.warnings.join('\n')),
+            ),
+          );
+        }
+        return Card(
+          color: scheme.errorContainer,
+          child: ListTile(
+            leading: const Icon(Icons.gpp_bad_outlined),
+            title: const Text('Verification failed'),
+            subtitle: Text(result.failures.join('\n')),
+          ),
+        );
+      },
+    );
+  }
+}
+
+class _PhotoBadge extends StatelessWidget {
+  final bool signed;
+  const _PhotoBadge({required this.signed});
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    return Padding(
+      padding: const EdgeInsets.only(top: 8),
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          Icon(
+            signed ? Icons.verified : Icons.warning_amber_outlined,
+            size: 18,
+            color: signed ? scheme.primary : scheme.error,
+          ),
+          const SizedBox(width: 6),
+          Flexible(
+            child: Text(
+              signed
+                  ? 'Photo signed by the issuing country'
+                  : 'Photo does NOT match the signed data',
+            ),
+          ),
+        ],
       ),
     );
   }
