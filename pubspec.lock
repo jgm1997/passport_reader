@@ -221,10 +221,10 @@ packages:
     dependency: "direct main"
     description:
       name: google_mlkit_text_recognition
-      sha256: b8de7cf1b21dd8f10e8031e61fc060925ac45dfb1c9b1a2ff5e70ea8fc7f11c6
+      sha256: "546e3e40181af7166d539f44416ff592a88bd12de61625ad9f2ec7166624f12b"
       url: "https://pub.dev"
     source: hosted
-    version: "1.0.1"
+    version: "1.0.3"
   http:
     dependency: "direct main"
     description:
