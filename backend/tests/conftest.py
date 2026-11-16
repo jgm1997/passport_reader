@@ -8,7 +8,9 @@ import subprocess
 
 import pytest
 from app.passive_auth import LdsSecurityObject
-from app.trust_store import TrustStore
+from app.trust_store import CscaMasterList, TrustStore
+from asn1crypto import pem
+from asn1crypto import x509 as asn1_x509
 
 
 def _openssl(*args: str) -> None:
@@ -129,3 +131,91 @@ def trust(utopia):
     trust_dir.mkdir(exist_ok=True)
     (trust_dir / "csca.pem").write_bytes((utopia / "csca.pem").read_bytes())
     return TrustStore.from_directory(trust_dir)
+
+
+@pytest.fixture(scope="session")
+def neverland(tmp_path_factory):
+    """Another fictional country whose CSCA signs master lists (our 'anchor')."""
+    d = tmp_path_factory.mktemp("neverland")
+    _openssl(
+        "req",
+        "-x509",
+        "-newkey",
+        "rsa:2048",
+        "-nodes",
+        "-keyout",
+        str(d / "anchor.key"),
+        "-out",
+        str(d / "anchor.pem"),
+        "-days",
+        "3650",
+        "-subj",
+        "/C=NL/O=Neverland/CN=CSCA Neverland",
+        "-addext",
+        "basicConstraints=critical,CA:TRUE",
+        "-addext",
+        "keyUsage=critical,keyCertSign,cRLSign",
+    )
+    _openssl(
+        "req",
+        "-newkey",
+        "rsa:2048",
+        "-nodes",
+        "-keyout",
+        str(d / "signer.key"),
+        "-out",
+        str(d / "signer.csr"),
+        "-subj",
+        "/C=NL/O=Neverland/CN=Master List Signer",
+    )
+    (d / "signer.ext").write_text("keyUsage=critical,digitalSignature\n")
+    _openssl(
+        "x509",
+        "-req",
+        "-in",
+        str(d / "signer.csr"),
+        "-CA",
+        str(d / "anchor.pem"),
+        "-CAkey",
+        str(d / "anchor.key"),
+        "-CAcreateserial",
+        "-out",
+        str(d / "signer.pem"),
+        "-days",
+        "365",
+        "-extfile",
+        str(d / "signer.ext"),
+    )
+    return d
+
+
+@pytest.fixture(scope="session")
+def master_list(utopia, neverland):
+    """A master list, signed by Neverland, that vouches for Utopia's CSCA."""
+
+    _, _, der = pem.unarmor((utopia / "csca.pem").read_bytes())
+    content = CscaMasterList(
+        {"version": 0, "cert_list": [asn1_x509.Certificate.load(der)]}
+    )
+    (neverland / "ml_content.der").write_bytes(content.dump())
+    _openssl(
+        "cms",
+        "-sign",
+        "-binary",
+        "-nodetach",
+        "-econtent_type",
+        "2.23.136.1.1.2",
+        "-md",
+        "sha256",
+        "-signer",
+        str(neverland / "signer.pem"),
+        "-inkey",
+        str(neverland / "signer.key"),
+        "-in",
+        str(neverland / "ml_content.der"),
+        "-outform",
+        "DER",
+        "-out",
+        str(neverland / "list.ml"),
+    )
+    return (neverland / "list.ml").read_bytes()
