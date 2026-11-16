@@ -42,6 +42,8 @@ dependencies:
       url: https://github.com/ZeroPass/dmrtd.git
       ref: 3b6c091843573b275ae68a87335e1872f8b60ea0
   j2k: ^1.0.0
+  http: ^1.6.0
+  crypto: ^3.0.8
 
 dev_dependencies:
   flutter_test:
