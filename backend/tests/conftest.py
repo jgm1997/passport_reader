@@ -219,3 +219,149 @@ def master_list(utopia, neverland):
         str(neverland / "list.ml"),
     )
     return (neverland / "list.ml").read_bytes()
+
+
+def _explicit_ec_key(path) -> None:
+    """A Brainpool key written with EXPLICIT curve parameters, as Germany's PKI does."""
+    _openssl(
+        "ecparam",
+        "-name",
+        "brainpoolP256r1",
+        "-param_enc",
+        "explicit",
+        "-genkey",
+        "-noout",
+        "-out",
+        str(path),
+    )
+
+
+@pytest.fixture(scope="session")
+def explicitland(tmp_path_factory):
+    """A fictional country (BP) whose CSCA, Document Signer and Master List Signer
+    all use explicit-parameter Brainpool keys."""
+    d = tmp_path_factory.mktemp("explicitland")
+    for name in ("csca", "dsc", "mls"):
+        _explicit_ec_key(d / f"{name}.key")
+    _openssl(
+        "req",
+        "-x509",
+        "-new",
+        "-key",
+        str(d / "csca.key"),
+        "-out",
+        str(d / "csca.pem"),
+        "-days",
+        "3650",
+        "-subj",
+        "/C=BP/O=Explicitland/CN=CSCA Explicitland",
+        "-addext",
+        "basicConstraints=critical,CA:TRUE",
+        "-addext",
+        "keyUsage=critical,keyCertSign,cRLSign",
+    )
+    (d / "leaf.ext").write_text("keyUsage=critical,digitalSignature\n")
+    for name, common_name in (
+        ("dsc", "DS Explicitland"),
+        ("mls", "Master List Signer Explicitland"),
+    ):
+        _openssl(
+            "req",
+            "-new",
+            "-key",
+            str(d / f"{name}.key"),
+            "-out",
+            str(d / f"{name}.csr"),
+            "-subj",
+            f"/C=BP/O=Explicitland/CN={common_name}",
+        )
+        _openssl(
+            "x509",
+            "-req",
+            "-in",
+            str(d / f"{name}.csr"),
+            "-CA",
+            str(d / "csca.pem"),
+            "-CAkey",
+            str(d / "csca.key"),
+            "-CAcreateserial",
+            "-out",
+            str(d / f"{name}.pem"),
+            "-days",
+            "365",
+            "-extfile",
+            str(d / "leaf.ext"),
+        )
+    (d / "trust").mkdir()
+    (d / "trust" / "csca.pem").write_bytes((d / "csca.pem").read_bytes())
+    return d
+
+
+@pytest.fixture(scope="session")
+def explicit_passport(explicitland):
+    """A passport SOD signed by Explicitland's explicit-curve Document Signer."""
+    dgs = {1: b"\x61\x10fake DG1 content", 2: b"\x75\x10fake DG2 photo..."}
+    lds = LdsSecurityObject(
+        {
+            "version": 0,
+            "hash_algorithm": {"algorithm": "sha256"},
+            "data_group_hashes": [
+                {"number": n, "hash": hashlib.sha256(b).digest()}
+                for n, b in dgs.items()
+            ],
+        }
+    )
+    (explicitland / "lds.der").write_bytes(lds.dump())
+    _openssl(
+        "cms",
+        "-sign",
+        "-binary",
+        "-nodetach",
+        "-econtent_type",
+        "2.23.136.1.1.1",
+        "-md",
+        "sha256",
+        "-signer",
+        str(explicitland / "dsc.pem"),
+        "-inkey",
+        str(explicitland / "dsc.key"),
+        "-in",
+        str(explicitland / "lds.der"),
+        "-outform",
+        "DER",
+        "-out",
+        str(explicitland / "sod.der"),
+    )
+    return _tlv(0x77, (explicitland / "sod.der").read_bytes()), dgs
+
+
+@pytest.fixture(scope="session")
+def explicit_master_list(utopia, explicitland):
+    """A master list vouching for Utopia, signed like Germany's (explicit-curve signer)."""
+
+    _, _, der = pem.unarmor((utopia / "csca.pem").read_bytes())
+    content = CscaMasterList(
+        {"version": 0, "cert_list": [asn1_x509.Certificate.load(der)]}
+    )
+    (explicitland / "ml_content.der").write_bytes(content.dump())
+    _openssl(
+        "cms",
+        "-sign",
+        "-binary",
+        "-nodetach",
+        "-econtent_type",
+        "2.23.136.1.1.2",
+        "-md",
+        "sha256",
+        "-signer",
+        str(explicitland / "mls.pem"),
+        "-inkey",
+        str(explicitland / "mls.key"),
+        "-in",
+        str(explicitland / "ml_content.der"),
+        "-outform",
+        "DER",
+        "-out",
+        str(explicitland / "list.ml"),
+    )
+    return (explicitland / "list.ml").read_bytes()
