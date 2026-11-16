@@ -15,24 +15,22 @@ from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from typing import Any, ClassVar
 
-from asn1crypto import algos, cms, core, parser
-from asn1crypto import x509 as asn1_x509
+from asn1crypto import algos, core, parser
 from cryptography import x509
 from cryptography.exceptions import InvalidSignature
-from cryptography.hazmat.primitives import hashes
-from cryptography.hazmat.primitives.asymmetric import ec, padding, rsa
 
 from app.trust_store import TrustStore, country_of
+from backend.app.cms_verify import (
+    HASHES,
+    CmsError,
+    encapsulated_content,
+    load_signed_data,
+    signer_and_certificate,
+    verify_signer,
+)
+from backend.app.revocation import CrlStore, RevocationStatus
 
 LDS_SECURITY_OBJECT = "2.23.136.1.1.1"
-
-_HASHES = {
-    "sha1": hashes.SHA1,
-    "sha224": hashes.SHA224,
-    "sha256": hashes.SHA256,
-    "sha384": hashes.SHA384,
-    "sha512": hashes.SHA512,
-}
 
 
 # --- ASN.1 structures (ICAO 9303 Part 10) ---
@@ -64,10 +62,6 @@ class LdsSecurityObject(core.Sequence):
 
 
 # --- Result ---
-class PassiveAuthError(Exception):
-    """The SOD is malformed or uses something this server doesn't support."""
-
-
 @dataclass
 class PassiveAuthResult:
     valid: bool = False
@@ -85,6 +79,8 @@ def verify_passive_auth(
     sod: bytes,
     data_groups: dict[int, bytes],
     trust: TrustStore,
+    crls: CrlStore | None = None,
+    require_crl: bool = False,
     now: datetime | None = None,
 ) -> PassiveAuthResult:
     now = now or datetime.now(UTC)
@@ -92,32 +88,31 @@ def verify_passive_auth(
 
     # 0. Parse. Anything malformed ends here, with a reason instead of a crash.
     try:
-        signed_data = _load_signed_data(sod)
-        lds_bytes, lds = _load_lds_security_object(signed_data)
-        signer = _single_signer(signed_data)
-        dsc = _find_document_signer(signed_data, signer)
+        signed_data = load_signed_data(_unwrap_ef_sod(sod))
+        lds_bytes = encapsulated_content(signed_data, LDS_SECURITY_OBJECT)
+        lds = LdsSecurityObject.load(lds_bytes, strict=True)
+        signer, dsc = signer_and_certificate(signed_data)
         hash_name = lds["hash_algorithm"]["algorithm"].native
         expected = {
             h["number"].native: h["hash"].native for h in lds["data_group_hashes"]
         }
-    except (PassiveAuthError, ValueError, TypeError, KeyError, IndexError) as e:
+    except (CmsError, ValueError, TypeError, KeyError, IndexError) as e:
         result.failures.append(f"malformed SOD: {e}")
         return result
 
-    if hash_name not in _HASHES:
+    if hash_name not in HASHES:
         result.failures.append(f"unsupported hash algorithm: {hash_name}")
         return result
     result.hash_algorithm = hash_name
 
     # 1. Is the SOD really signed by its Document Signer?
     try:
-        _check_signed_attributes(signer, lds_bytes)
-        _verify_signature(dsc.public_key(), signer)
+        verify_signer(signer, lds_bytes, LDS_SECURITY_OBJECT, dsc)
     except InvalidSignature:
         result.failures.append(
             "SOD signature does not match the Document Signer certificate"
         )
-    except (PassiveAuthError, ValueError, KeyError) as e:
+    except (CmsError, ValueError, KeyError) as e:
         result.failures.append(f"SOD signature could not be verified: {e}")
 
     # 2. Was the Document Signer issued by a CSCA we trust?
@@ -136,6 +131,7 @@ def verify_passive_auth(
                 result.failures.append(
                     f"{label} certificate is outside its validity period"
                 )
+        _check_revocation(result, dsc, csca, crls, require_crl, now)
 
     # 3. Do the data groups we received match the signed hashes?
     for number, content in sorted(data_groups.items()):
@@ -160,120 +156,34 @@ def verify_passive_auth(
 
 
 # --- Steps ---
-def _load_signed_data(sod: bytes) -> cms.SignedData:
+def _unwrap_ef_sod(sod: bytes) -> bytes:
     class_, _method, tag, _header, contents, _trailer = parser.parse(sod, strict=True)
-    if class_ == 1 and tag == 23:  # EF.SOD wraps the CMS in [APPLICATION 23] (0x77)
-        sod = contents
-    info = cms.ContentInfo.load(sod, strict=True)
-    if info["content_type"].native != "signed_data":
-        raise PassiveAuthError("not a CMS SignedData structure")
-    return info["content"]
+    if class_ == 1 and tag == 23:
+        return contents
+    return sod
 
 
-def _load_lds_security_object(
-    signed_data: cms.SignedData,
-) -> tuple[bytes, LdsSecurityObject]:
-    encap = signed_data["encap_content_info"]
-    if encap["content_type"].dotted != LDS_SECURITY_OBJECT:
-        raise PassiveAuthError("SOD does not contain an LDS Security Object")
-    lds_bytes = encap["content"].native
-    if not isinstance(lds_bytes, bytes):
-        raise PassiveAuthError("LDS Security Object is missing")
-    return lds_bytes, LdsSecurityObject.load(lds_bytes, strict=True)
-
-
-def _single_signer(signed_data: cms.SignedData) -> cms.SignerInfo:
-    signers = signed_data["signer_infos"]
-    if len(signers) != 1:
-        raise PassiveAuthError(f"expected exactly 1 signer, found {len(signers)}")
-    return signers[0]
-
-
-def _find_document_signer(
-    signed_data: cms.SignedData, signer: cms.SignerInfo
-) -> x509.Certificate:
-    certificates = signed_data["certificates"]
-    if isinstance(certificates, core.Void) or len(certificates) == 0:
-        raise PassiveAuthError("SOD contains no Document Signer certificate")
-
-    sid = signer["sid"]
-    for choice in certificates:
-        cert = choice.chosen
-        if not isinstance(cert, asn1_x509.Certificate):
-            continue
-        if sid.name == "issuer_and_serial_number":
-            match = (
-                cert.issuer == sid.chosen["issuer"]
-                and cert.serial_number == sid.chosen["serial_number"].native
-            )
-        else:  # subject_key_identifier
-            match = cert.key_identifier == sid.chosen.native
-        if match:
-            try:
-                return x509.load_der_x509_certificate(cert.dump())
-            except ValueError as e:
-                raise PassiveAuthError(
-                    f"Document Signer certificate can't be loaded (e.g. explicit EC parameters): {e}"
-                ) from e
-    raise PassiveAuthError("Document Signer certificate not found in SOD")
-
-
-def _check_signed_attributes(signer: cms.SignerInfo, lds_bytes: bytes) -> None:
-    attrs = signer["signed_attrs"]
-    if isinstance(attrs, core.Void) or len(attrs) == 0:
-        raise PassiveAuthError("SOD has no signed attributes")
-
-    found = {a["type"].native: a["values"] for a in attrs}
-    if len(found) != len(attrs):
-        raise PassiveAuthError("duplicate signed attributes")
-
-    content_type, digest = found.get("content_type"), found.get("message_digest")
-    if not content_type or not digest or len(content_type) != 1 or len(digest) != 1:
-        raise PassiveAuthError("content-type or message-digest attribute missing")
-    if content_type[0].dotted != LDS_SECURITY_OBJECT:
-        raise PassiveAuthError("signed content-type attribute is wrong")
-
-    digest_name = signer["digest_algorithm"]["algorithm"].native
-    if digest_name not in _HASHES:
-        raise PassiveAuthError(f"unsupported digest algorithm: {digest_name}")
-    actual = hashlib.new(digest_name, lds_bytes).digest()
-    if not hmac.compare_digest(digest[0].native, actual):
-        raise PassiveAuthError("message digest does not match the LDS Security Object")
-
-
-def _verify_signature(public_key, signer: cms.SignerInfo) -> None:
-    # The signature covers the DER of the signed attributes re-tagged as a SET (0x31),
-    # not the [0] IMPLICIT tag (0xA0) they carry inside SignerInfo (RFC 5652, 5.4).
-    data = b"\x31" + signer["signed_attrs"].dump()[1:]
-    signature = signer["signature"].native
-    sig_algo = signer["signature_algorithm"]
-    kind = sig_algo.signature_algo
-
-    try:
-        hash_name = sig_algo.hash_algo  # e.g. "sha256" for sha256_rsa / ecdsa / pss
-    except ValueError:
-        hash_name = signer["digest_algorithm"]["algorithm"].native
-    if hash_name not in _HASHES:
-        raise PassiveAuthError(f"unsupported hash: {hash_name}")
-    digest = _HASHES[hash_name]()
-
-    if kind == "rsassa_pkcs1v15" and isinstance(public_key, rsa.RSAPublicKey):
-        public_key.verify(signature, data, padding.PKCS1v15(), digest)
-    elif kind == "rsassa_pss" and isinstance(public_key, rsa.RSAPublicKey):
-        params = sig_algo["parameters"]
-        mgf_hash = params["mask_gen_algorithm"]["parameters"]["algorithm"].native
-        if mgf_hash not in _HASHES:
-            raise PassiveAuthError(f"unsupported MGF1 hash: {mgf_hash}")
-        public_key.verify(
-            signature,
-            data,
-            padding.PSS(
-                mgf=padding.MGF1(_HASHES[mgf_hash]()),
-                salt_length=params["salt_length"].native,
-            ),
-            digest,
-        )
-    elif kind == "ecdsa" and isinstance(public_key, ec.EllipticCurvePublicKey):
-        public_key.verify(signature, data, ec.ECDSA(digest))
+def _check_revocation(
+    result: PassiveAuthResult,
+    dsc: x509.Certificate,
+    csca: x509.Certificate,
+    crls: CrlStore | None,
+    require_crl: bool,
+    now: datetime,
+) -> None:
+    country = country_of(csca.subject)
+    if crls is None:
+        status = RevocationStatus.UNKNOWN
     else:
-        raise PassiveAuthError(f"unsupported signature algorithm: {kind}")
+        status = crls.status(dsc, csca, now)
+
+    if status is RevocationStatus.REVOKED:
+        result.failures.append("Document Signer certificate has been revoked")
+        return
+    problem = {
+        RevocationStatus.STALE: f"the CRL for {country} is out of date",
+        RevocationStatus.UNKNOWN: f"no trusted CRL available for {country}",
+    }.get(status)
+    if problem:
+        # Policy decision: fail closed (require_crl) or fail open with a warning
+        (result.failures if require_crl else result.warnings).append(problem)
