@@ -29,6 +29,9 @@ migrate_working_dir/
 # Backend: CSCA trust anchors (master lists / certificates) are provisioned locally
 /backend/trust/
 
+# TLS test CAs
+test/fixtures/tls/
+
 # Flutter/Dart/Pub related
 **/doc/api/
 **/ios/Flutter/.last_build_id
