@@ -106,6 +106,7 @@ class _ManualEntryScreenState extends State<ManualEntryScreen> {
                   textCapitalization: TextCapitalization.characters,
                   autocorrect: false,
                   enableSuggestions: false,
+                  enableIMEPersonalizedLearning: false,
                   inputFormatters: [
                     FilteringTextInputFormatter.allow(RegExp(r'[A-Za-z0-9]')),
                   ],
@@ -124,6 +125,9 @@ class _ManualEntryScreenState extends State<ManualEntryScreen> {
                   ),
                   validator: (_) =>
                       validateDateOfBirth(_dateOfBirth, today: DateTime.now()),
+                  autocorrect: false,
+                  enableIMEPersonalizedLearning: false,
+                  enableSuggestions: false,
                 ),
                 const SizedBox(height: 16),
                 TextFormField(
@@ -139,6 +143,9 @@ class _ManualEntryScreenState extends State<ManualEntryScreen> {
                     _dateOfExpiry,
                     dateOfBirth: _dateOfBirth,
                   ),
+                  autocorrect: false,
+                  enableIMEPersonalizedLearning: false,
+                  enableSuggestions: false,
                 ),
                 const SizedBox(height: 32),
                 FilledButton(onPressed: _submit, child: const Text('Continue')),

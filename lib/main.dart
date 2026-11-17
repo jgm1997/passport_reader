@@ -1,4 +1,5 @@
 import 'package:material_ui/material_ui.dart';
+import 'package:passport_reader/core/security/privacy_cover.dart';
 import 'package:passport_reader/features/home/home_screen.dart';
 
 void main() {
@@ -18,6 +19,7 @@ class PassportReaderApp extends StatelessWidget {
         colorScheme: ColorScheme.fromSeed(seedColor: Colors.indigo),
       ),
       home: const HomeScreen(),
+      builder: (context, child) => PrivacyCover(child: child!),
     );
   }
 }
