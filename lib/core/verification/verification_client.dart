@@ -4,6 +4,7 @@ import 'dart:io';
 
 import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
+import 'package:passport_reader/core/network/pinned_client.dart';
 import 'package:passport_reader/core/passport/passport_data.dart';
 import 'package:passport_reader/core/verification/verification_result.dart';
 
@@ -13,6 +14,7 @@ enum VerificationFailure {
   rejectedRequest,
   serverError,
   badResponse,
+  untrustedServer, // TLS failed: the server isn't the one we pinned
 }
 
 extension VerificationFailureMessage on VerificationFailure {
@@ -27,6 +29,8 @@ extension VerificationFailureMessage on VerificationFailure {
       'The verification server had a problem. Try again later.',
     VerificationFailure.badResponse =>
       'The verification server sent an unexpected answer.',
+    VerificationFailure.untrustedServer =>
+      "Couldn't establish a trusted connection to the verification server.",
   };
 }
 
@@ -48,9 +52,8 @@ class VerificationClient {
     http.Client? httpClient,
     this.timeout = const Duration(seconds: 15),
   }) : _baseUri = baseUri,
-       _http = httpClient ?? http.Client() {
-    // Plain HTTP is only accpetable for local development
-    if (!kDebugMode && baseUri.scheme != 'https') {
+       _http = httpClient ?? createPinnedClient() {
+    if (baseUri.scheme != 'https') {
       throw ArgumentError(
         'Release builds must use an https:// verification URL',
       );
@@ -90,6 +93,8 @@ class VerificationClient {
           .timeout(timeout);
     } on TimeoutException {
       throw const VerificationException(VerificationFailure.timeout);
+    } on HandshakeException {
+      throw const VerificationException(VerificationFailure.untrustedServer);
     } on http.ClientException {
       throw const VerificationException(VerificationFailure.unreachable);
     } on SocketException {
