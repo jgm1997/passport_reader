@@ -66,7 +66,7 @@ def load_certificates_from_file(file: Path) -> list[x509.Certificate]:
     data = file.read_bytes()
     if data.lstrip().startswith(b"-----BEGIN"):
         return x509.load_pem_x509_certificates(data)
-    if file.suffix.lower() in {"der", ".cer", ".crt"}:
+    if file.suffix.lower() in {".der", ".cer", ".crt"}:
         return [x509.load_der_x509_certificate(data)]
     return []
 
