@@ -53,7 +53,7 @@ class VerificationClient {
     this.timeout = const Duration(seconds: 15),
   }) : _baseUri = baseUri,
        _http = httpClient ?? createPinnedClient() {
-    if (baseUri.scheme != 'https') {
+    if (kReleaseMode && baseUri.scheme != 'https') {
       throw ArgumentError(
         'Release builds must use an https:// verification URL',
       );
