@@ -174,6 +174,12 @@ class ChipAuthenticator {
     final looksLikeEfCom =
         data != null && data.isNotEmpty && data.first == 0x60;
 
+    if (kDebugMode) {
+      debugPrint(
+        'Chip Authentication proof: mac=$macWasChecked status=${plain.status} efCom=$looksLikeEfCom',
+      );
+    }
+
     if (macWasChecked && plain.status == StatusWord.success && looksLikeEfCom) {
       return ChipAuthResult(ChipAuthStatus.passed, setup.description);
     }
