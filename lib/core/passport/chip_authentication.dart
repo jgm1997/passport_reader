@@ -9,6 +9,7 @@ import 'package:dmrtd/internal.dart'
         DES_SMCipher,
         DESedeSSC,
         DeriveKey,
+        ICCError,
         MrtdApi,
         MrtdSM,
         ResponseAPDU,
@@ -47,15 +48,14 @@ class ChipAuthenticator {
     }
 
     var switchedKeys = false;
+    var step = 'restarting the session';
     try {
       // 1. A fresh BAC session on the same connection, through an API we control
       final api = MrtdApi(_nfc);
-      await api.selectEMrtdApplication();
-      await api.initSessionViaBAC(
-        DBAKey(key.documentNumber, key.dateOfBirth, key.dateOfExpiry),
-      );
+      await _restartSession(api, key);
 
       // 2. Our ephemeral key pair, and ECDH with the chip's static key from DG14.
+      step = 'key agreement';
       final ephemeral = generateEphemeralKeyPair(domain);
       final chipPublicKey = decodeChipPublicKey(domain, setup.publicPoint);
       final sharedSecret = ecdhSharedSecret(
@@ -64,6 +64,7 @@ class ChipAuthenticator {
       );
 
       // 3. Send the chip our ephemeral public key (still under the BAC session).
+      step = 'sending our key';
       final commands = chipAuthCommands(
         setup,
         ephemeral.publicKey.Q!.getEncoded(false),
@@ -76,7 +77,7 @@ class ChipAuthenticator {
           }
           return ChipAuthResult(
             ChipAuthStatus.rejected,
-            'chip refused the command',
+            'Chip refused the command',
           );
         }
       }
@@ -86,12 +87,26 @@ class ChipAuthenticator {
       switchedKeys = true;
 
       // 5. The proof.
+      step = 'proof';
       return await _proveNewKeys(api, setup);
     } on ComProviderError {
       return const ChipAuthResult(
         ChipAuthStatus.notCompleted,
         'Connection lost',
       );
+    } on ICCError catch (e) {
+      if (kDebugMode) {
+        debugPrint('Chip Authentication: chip error while $step: ${e.sw}');
+      }
+      return switchedKeys
+          ? const ChipAuthResult(
+              ChipAuthStatus.failed,
+              'Chip error under the new keys',
+            )
+          : ChipAuthResult(
+              ChipAuthStatus.notCompleted,
+              'Chip error while $step',
+            );
     } on SMError {
       return switchedKeys
           ? const ChipAuthResult(
@@ -109,11 +124,32 @@ class ChipAuthenticator {
               ChipAuthStatus.failed,
               'Unreadable answer under the new keys',
             )
-          : const ChipAuthResult(
+          : ChipAuthResult(
               ChipAuthStatus.notCompleted,
-              'Unexpected error',
+              'Unexpected error while $step',
             );
     }
+  }
+
+  /// Ends the reader's secure-messaging session and starts a new BAC session.
+  ///
+  /// A plain command during an active session makes the chip drop that session,
+  /// but ICAO allows it to do so by REFUSING the command (e.g. 69 87 / 69 88).
+  /// The refusal itself resets the chip, so one retry is expected, not suspicious.
+  Future<void> _restartSession(MrtdApi api, MrzKey key) async {
+    try {
+      await api.selectEMrtdApplication();
+    } on ICCError catch (e) {
+      if (kDebugMode) {
+        debugPrint(
+          'Chip Authentication: first SELECT refused (${e.sw}), retrying',
+        );
+      }
+      await api.selectEMrtdApplication();
+    }
+    await api.initSessionViaBAC(
+      DBAKey(key.documentNumber, key.dateOfBirth, key.dateOfExpiry),
+    );
   }
 
   /// Sends a command through the current secure mesaging, WITHOUT any of
