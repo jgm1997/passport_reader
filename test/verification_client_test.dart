@@ -37,7 +37,7 @@ const _validResponse = {
 
 VerificationClient _client(MockClient mock, {Duration? timeout}) =>
     VerificationClient(
-      baseUri: Uri.parse('http://localhost:8000'),
+      baseUri: Uri.parse('https://localhost:8000'),
       httpClient: mock,
       timeout: timeout ?? const Duration(seconds: 5),
     );
@@ -47,6 +47,16 @@ Matcher _fails(VerificationFailure failure) => throwsA(
 );
 
 void main() {
+  test('refuses a plain http:// URL', () {
+    expect(
+      () => VerificationClient(
+        baseUri: Uri.parse('http://localhost:8000'),
+        httpClient: MockClient((_) async => http.Response('', 200)),
+      ),
+      throwsArgumentError,
+    );
+  });
+
   test('sends the SOD, DG1 and DG15, but never the photo', () async {
     late Map<String, dynamic> sent;
     final mock = MockClient((request) async {

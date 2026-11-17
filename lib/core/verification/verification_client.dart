@@ -51,13 +51,18 @@ class VerificationClient {
     required Uri baseUri,
     http.Client? httpClient,
     this.timeout = const Duration(seconds: 15),
-  }) : _baseUri = baseUri,
-       _http = httpClient ?? createPinnedClient() {
-    if (kReleaseMode && baseUri.scheme != 'https') {
-      throw ArgumentError(
-        'Release builds must use an https:// verification URL',
+  }) : _baseUri = _requireHttps(baseUri),
+       _http = httpClient ?? createPinnedClient();
+
+  static Uri _requireHttps(Uri uri) {
+    if (uri.scheme != 'https') {
+      throw ArgumentError.value(
+        uri,
+        'baseUri',
+        'The verification URL must use https://',
       );
     }
+    return uri;
   }
 
   /// Reads the server address given with --dart-define=VERIFY_URL=...
@@ -65,7 +70,7 @@ class VerificationClient {
     baseUri: Uri.parse(
       const String.fromEnvironment(
         "VERIFY_URL",
-        defaultValue: 'http://localhost:8000',
+        defaultValue: 'https://localhost:8000',
       ),
     ),
   );
@@ -102,11 +107,7 @@ class VerificationClient {
     }
 
     if (response.statusCode != 200) {
-      if (kDebugMode) {
-        debugPrint(
-          'Verification HTTP ${response.statusCode}: ${response.body}',
-        );
-      }
+      if (kDebugMode) debugPrint('Verification HTTP ${response.statusCode}');
       throw VerificationException(
         response.statusCode == 422
             ? VerificationFailure.rejectedRequest
