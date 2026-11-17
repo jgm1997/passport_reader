@@ -18,13 +18,14 @@ Future<ui.Image> decodeFaceImage(Uint8List bytes) async {
     case DetectedImageFormat.jpeg2000:
       final decoded = await Isolate.run(() => jpeg2000ToRgba(bytes))
           .timeout(const Duration(seconds: 10));
-      return _rgbaToImage(decoded);
+      return rgbaToImage(decoded);
     case DetectedImageFormat.unknown:
       throw const FaceImageException('Unknown image format');
   }
 }
 
-Future<ui.Image> _rgbaToImage(RgbaImage img) {
+@visibleForTesting
+Future<ui.Image> rgbaToImage(RgbaImage img) {
   final completer = Completer<ui.Image>();
   ui.decodeImageFromPixels(
     img.rgba,
