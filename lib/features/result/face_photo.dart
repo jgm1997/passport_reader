@@ -45,9 +45,13 @@ class FacePhoto extends StatefulWidget {
   State<FacePhoto> createState() => _FacePhotoState();
 }
 
-class _FacePhotoState extends State<FacePhoto> {
+class _FacePhotoState extends State<FacePhoto>
+    with AutomaticKeepAliveClientMixin {
   ui.Image? _image;
   bool _failed = false;
+
+  @override
+  bool get wantKeepAlive => true;
 
   @override
   void initState() {
@@ -84,6 +88,8 @@ class _FacePhotoState extends State<FacePhoto> {
 
   @override
   Widget build(BuildContext context) {
+    super.build(context);
+
     const height = 220.0;
     final image = _image;
 
