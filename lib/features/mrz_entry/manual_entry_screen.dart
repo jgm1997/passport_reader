@@ -1,4 +1,4 @@
-import 'package:flutter/material.dart';
+import 'package:material_ui/material_ui.dart';
 import 'package:flutter/services.dart';
 import 'package:passport_reader/core/mrz/mrz_key.dart';
 import 'package:passport_reader/core/mrz/mrz_validators.dart';

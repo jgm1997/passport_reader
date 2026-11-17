@@ -1,4 +1,4 @@
-import 'package:flutter/material.dart';
+import 'package:material_ui/material_ui.dart';
 import 'package:passport_reader/features/mrz_entry/manual_entry_screen.dart';
 import 'package:passport_reader/features/mrz_scan/mrz_scan_screen.dart';
 

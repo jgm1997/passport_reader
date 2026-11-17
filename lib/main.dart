@@ -1,4 +1,4 @@
-import 'package:flutter/material.dart';
+import 'package:material_ui/material_ui.dart';
 import 'package:passport_reader/features/home/home_screen.dart';
 
 void main() {

@@ -1,5 +1,5 @@
 import 'package:flutter/foundation.dart';
-import 'package:flutter/material.dart';
+import 'package:material_ui/material_ui.dart';
 import 'package:passport_reader/core/mrz/mrz_key.dart';
 import 'package:passport_reader/core/mrz/utils/date_format.dart';
 import 'package:passport_reader/core/passport/chip_auth_result.dart';

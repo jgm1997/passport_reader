@@ -3,7 +3,7 @@ import 'dart:isolate';
 import 'dart:ui' as ui;
 
 import 'package:flutter/foundation.dart';
-import 'package:flutter/material.dart';
+import 'package:material_ui/material_ui.dart';
 import 'package:passport_reader/core/image/face_image_decoder.dart';
 import 'package:passport_reader/core/image/image_format.dart';
 

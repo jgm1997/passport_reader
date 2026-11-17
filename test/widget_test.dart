@@ -1,5 +1,5 @@
 import 'package:flutter_test/flutter_test.dart';
-import 'package:flutter/material.dart';
+import 'package:material_ui/material_ui.dart';
 import 'package:passport_reader/main.dart';
 import 'package:passport_reader/features/mrz_entry/manual_entry_screen.dart';
 
