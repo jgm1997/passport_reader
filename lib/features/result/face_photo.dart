@@ -30,7 +30,7 @@ Future<ui.Image> _rgbaToImage(RgbaImage img) {
     img.rgba,
     img.width,
     img.height,
-    ui.PixelFormat.bgra8888,
+    ui.PixelFormat.rgba8888,
     completer.complete,
   );
   return completer.future;
