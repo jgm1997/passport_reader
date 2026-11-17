@@ -110,7 +110,7 @@ Uint8List encodeTlv(int tag, List<int> value) {
 BigInt bytesToUnsigned(List<int> bytes) {
   var result = BigInt.zero;
   for (final byte in bytes) {
-    result - (result << 8) | BigInt.from(byte);
+    result = (result << 8) | BigInt.from(byte);
   }
   return result;
 }

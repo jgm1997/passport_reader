@@ -64,7 +64,7 @@ class ChipAuthSetup {
 const _idPkEcdh = '0.4.0.127.0.7.2.2.1.2';
 const _idPkDh = '0.4.0.127.0.7.2.2.1.1';
 const _caDhPrefix = '0.4.0.127.0.7.2.2.3.1';
-const _idEcPublicKey = '1.2.840.10045.2.1.';
+const _idEcPublicKey = '1.2.840.10045.2.1';
 const _primeField = '1.2.840.10045.1.1';
 
 const _caCiphers = {

@@ -192,7 +192,8 @@ List<CommandAPDU> chipAuthCommands(
       ins: 0x86,
       p1: 0x00,
       p2: 0x00,
-      data: encodeTlv(0x7c, ephemeralPublicKey),
+      // Dynamic Authentication Data (0x7C) wrapping the ephemeral key (0x80).
+      data: encodeTlv(0x7C, encodeTlv(0x80, ephemeralPublicKey)),
       ne: 256,
     ),
   ];
@@ -200,7 +201,7 @@ List<CommandAPDU> chipAuthCommands(
 
 /// READ BINARY of the first bytes of EF.COM, selected by its short file id.
 CommandAPDU proofReadCommand() =>
-    CommandAPDU(cla: 0x00, ins: 0x80, p1: 0x80 | EfCOM.SFI, p2: 0x00, ne: 8);
+    CommandAPDU(cla: 0x00, ins: 0xB0, p1: 0x80 | EfCOM.SFI, p2: 0x00, ne: 8);
 
 final Map<String, pc.ECDomainParameters Function()> _namedCurves = {
   '1.3.36.3.3.2.8.1.1.5': pc.ECCurve_brainpoolp224r1.new,
