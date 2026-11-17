@@ -71,6 +71,7 @@ def create_app(
     ) -> JSONResponse:
         # Never echo the input: it contains passport data
         errors = [{"loc": e["loc"], "type": e["type"]} for e in exc.errors()]
+        log.info("request validation failed: %s", errors) # field names and error types only
         return JSONResponse(status_code=422, content={"detail": errors})
 
     @app.get("/health")

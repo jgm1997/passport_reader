@@ -31,14 +31,16 @@ class PlayIntegrity implements DeviceIntegrity {
     }
     try {
       await (_prepared ??= _channel.invokeMethod<void>('prepare', {
-        'cloudprojectNumber': _cloudProjectNumber,
+        'cloudProjectNumber': _cloudProjectNumber,
       }));
       return await _channel.invokeMethod<String>('request', {
         'requestHash': requestHashOf(body),
       });
     } on PlatformException catch (e) {
       _prepared = null; // failed or expired provider: prepare again next time
-      if (kDebugMode) debugPrint('Play Integrity unavailable: ${e.code}');
+      if (kDebugMode) {
+        debugPrint('Play Integrity unavailable: ${e.code} ${e.message}');
+      }
       return null;
     }
   }
