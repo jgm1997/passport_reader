@@ -100,6 +100,8 @@ class VerificationClient {
       throw const VerificationException(VerificationFailure.timeout);
     } on HandshakeException {
       throw const VerificationException(VerificationFailure.untrustedServer);
+    } on TlsException {
+      throw const VerificationException(VerificationFailure.untrustedServer);
     } on http.ClientException {
       throw const VerificationException(VerificationFailure.unreachable);
     } on SocketException {
