@@ -7,7 +7,9 @@ import binascii
 import logging
 from typing import Annotated
 
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Request
+from fastapi.exceptions import RequestValidationError
+from fastapi.responses import JSONResponse
 from pydantic import BaseModel, ConfigDict, Field, StringConstraints
 
 from app.passive_auth import verify_passive_auth
@@ -54,6 +56,14 @@ def create_app(
     trust: TrustStore, crls: CrlStore | None = None, require_crl: bool = False
 ) -> FastAPI:
     app = FastAPI(title="Passport verification")
+
+    @app.exception_handler(RequestValidationError)
+    async def _validation_error(
+        _: Request, exc: RequestValidationError
+    ) -> JSONResponse:
+        # Never echo the input: it contains passport data
+        errors = [{"loc": e["loc"], "type": e["type"]} for e in exc.errors()]
+        return JSONResponse(status_code=422, content={"detail": errors})
 
     @app.get("/health")
     def health() -> dict:
