@@ -1,4 +1,4 @@
-import 'package:flutter/material.dart';
+import 'package:material_ui/material_ui.dart';
 import 'package:passport_reader/core/mrz/mrz_key.dart';
 import 'package:passport_reader/core/mrz/utils/date_format.dart';
 import 'package:passport_reader/core/passport/passport_reader.dart';
@@ -62,7 +62,7 @@ class _ReadyToScanScreenState extends State<ReadyToScanScreen> {
 
   String _stageLabel(ReadStage stage) => switch (stage) {
     ReadStage.waitingForPassport =>
-      'Place your phone on the photo page and hold still...',
+      'Place your phone on the passport cover and hold still...',
     ReadStage.authenticating => 'Unlocking the chip...',
     ReadStage.readingDetails => 'Reading your details...',
     ReadStage.readingPhoto => 'Reading the photo (a few seconds)...',
@@ -90,8 +90,8 @@ class _ReadyToScanScreenState extends State<ReadyToScanScreen> {
                     const Icon(Icons.contactless_outlined, size: 96),
                     const SizedBox(height: 16),
                     Text(
-                      'Open the passport at the photo page, then lay the back '
-                      'of oyur phone flat on it. Keep still until it finishes.',
+                      'Close your passport, then lay the back of your phone '
+                      'flat on the cover of it. Keep still until it finishes.',
                       style: theme.textTheme.bodyLarge,
                       textAlign: TextAlign.center,
                     ),
