@@ -36,6 +36,10 @@ android {
             signingConfig = signingConfigs.getByName("debug")
         }
     }
+
+    dependencies {
+        implementation("com.google.android.play:integrity:1.5.0")
+    }
 }
 
 kotlin {
