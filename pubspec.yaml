@@ -44,6 +44,7 @@ dependencies:
   j2k: ^1.0.0
   http: ^1.6.0
   crypto: ^3.0.8
+  pointycastle: ^3.9.1
 
 dev_dependencies:
   flutter_test:
