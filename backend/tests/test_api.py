@@ -53,3 +53,11 @@ def test_unknown_fields_are_rejected(passport, trust):
         },
     )
     assert response.status_code == 422
+
+
+def test_invalid_body_is_rejected(trust):
+    client = TestClient(create_app(trust))
+    response = client.post(
+        "/v1/passive-auth", json={"dataGroups": {"1": "SECRET-MARKER"}}
+    )
+    assert "SECRET-MARKER" not in response.text
