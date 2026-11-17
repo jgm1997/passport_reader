@@ -2,6 +2,7 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:passport_reader/core/mrz/mrz_key.dart';
 import 'package:passport_reader/core/mrz/utils/date_format.dart';
+import 'package:passport_reader/core/passport/chip_auth_result.dart';
 import 'package:passport_reader/core/passport/consistency.dart';
 import 'package:passport_reader/core/passport/passport_data.dart';
 import 'package:passport_reader/core/verification/photo_integrity.dart';
@@ -70,6 +71,11 @@ class _PassportResultScreenState extends State<PassportResultScreen> {
           children: [
             _VerificationBanner(future: _verification),
             const SizedBox(height: 12),
+            _ChipCheckCard(
+              chipAuth: data.chipAuthentication,
+              verification: _verification,
+            ),
+            const SizedBox(height: 12),
             _ConsistencyBanner(mismatches: mismatches),
             const SizedBox(height: 12),
             if (photo != null) ...[
@@ -111,6 +117,7 @@ class _PassportResultScreenState extends State<PassportResultScreen> {
                     : '${_kb(photo.length)}, '
                           '${data.photoFormat?.name.toUpperCase() ?? 'unknown format'}',
                 'Security object (SOD)': _kb(data.rawSod.length),
+                'Chip Authentication': data.chipAuthentication.status.name,
               },
             ),
             const SizedBox(height: 12),
@@ -293,6 +300,82 @@ class _PhotoBadge extends StatelessWidget {
           ),
         ],
       ),
+    );
+  }
+}
+
+class _ChipCheckCard extends StatelessWidget {
+  final ChipAuthResult chipAuth;
+  final Future<VerificationResult> verification;
+
+  const _ChipCheckCard({required this.chipAuth, required this.verification});
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    final detail = chipAuth.detail;
+
+    return FutureBuilder<VerificationResult>(
+      future: verification,
+      builder: (context, snapshot) {
+        final serverDone = snapshot.connectionState == ConnectionState.done;
+        // The chip's key only means something if DG14 itself is signed by the country.
+        final keyVerified =
+            snapshot.hasData &&
+            snapshot.requireData.valid &&
+            snapshot.requireData.verifiedDataGroups.contains(14);
+
+        final (
+          IconData icon,
+          Color? color,
+          String title,
+        ) = switch (chipAuth.status) {
+          ChipAuthStatus.passed when keyVerified => (
+            Icons.verified_user_outlined,
+            scheme.primaryContainer,
+            'Genuine chip: not a clone',
+          ),
+          ChipAuthStatus.passed when !serverDone => (
+            Icons.hourglass_top,
+            null,
+            'Chip check passed, waiting for the server...',
+          ),
+          ChipAuthStatus.passed => (
+            Icons.help_outline,
+            scheme.surfaceContainerHighest,
+            "Chip check passed, but its key wasn't verified by the server...",
+          ),
+          ChipAuthStatus.failed => (
+            Icons.gpp_bad_outlined,
+            scheme.errorContainer,
+            'Chip Authentication failed: possible clone',
+          ),
+          ChipAuthStatus.rejected => (
+            Icons.block,
+            scheme.surfaceContainerHighest,
+            'The chip refused Chip Authentication',
+          ),
+          ChipAuthStatus.notSupported => (
+            Icons.info_outline,
+            scheme.surfaceContainerHighest,
+            'Clone check not available for this chip',
+          ),
+          ChipAuthStatus.notCompleted => (
+            Icons.sync_problem,
+            scheme.surfaceContainerHighest,
+            "Clone check couldn't be completed",
+          ),
+        };
+
+        return Card(
+          color: color,
+          child: ListTile(
+            leading: Icon(icon),
+            title: Text(title),
+            subtitle: detail == null ? null : Text(detail),
+          ),
+        );
+      },
     );
   }
 }

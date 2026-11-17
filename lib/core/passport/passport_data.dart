@@ -1,5 +1,7 @@
 import 'dart:typed_data';
 
+import 'package:passport_reader/core/passport/chip_auth_result.dart';
+
 enum AccessProtocol { pace, bac }
 
 enum PhotoFormat { jpeg, jpeg2000 }
@@ -33,6 +35,8 @@ class PassportData {
   final Map<String, Duration> stageTimings;
   final Duration totalReadTime;
 
+  final ChipAuthResult chipAuthentication;
+
   const PassportData({
     required this.accessProtocol,
     required this.documentNumber,
@@ -49,6 +53,10 @@ class PassportData {
     this.photoFormat,
     this.stageTimings = const {},
     this.totalReadTime = Duration.zero,
+    this.chipAuthentication = const ChipAuthResult(
+      ChipAuthStatus.notSupported,
+      'DG14 not read',
+    ),
   });
 
   /// Never print personal data, only the shape of what was read

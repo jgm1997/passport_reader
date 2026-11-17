@@ -2,6 +2,8 @@
 import 'package:dmrtd/dmrtd.dart';
 import 'package:flutter/foundation.dart';
 import 'package:passport_reader/core/mrz/mrz_key.dart';
+import 'package:passport_reader/core/passport/chip_auth_result.dart';
+import 'package:passport_reader/core/passport/chip_authentication.dart';
 import 'package:passport_reader/core/passport/passport_data.dart';
 
 enum ReadStage {
@@ -10,6 +12,7 @@ enum ReadStage {
   readingDetails,
   readingPhoto,
   readingSecurityData,
+  checkingChip,
   done,
 }
 
@@ -131,6 +134,16 @@ class PassportReader {
       }
       final sod = await passport.readEfSOD();
 
+      // 6. Anti-cloning: prove the chip holds DG14's private key.
+      var chipAuthentication = const ChipAuthResult(
+        ChipAuthStatus.notSupported,
+        'This chip has no DG14',
+      );
+      final dg14 = raw[14];
+      if (dg14 != null) {
+        report(ReadStage.checkingChip, 0.9);
+        chipAuthentication = await ChipAuthenticator(_nfc).run(key, dg14);
+      }
       report(ReadStage.done, 1);
 
       final mrz = dg1.mrz;
@@ -150,6 +163,7 @@ class PassportReader {
         photoFormat: photoFormat,
         stageTimings: Map.unmodifiable(timings),
         totalReadTime: stopwatch.elapsed,
+        chipAuthentication: chipAuthentication,
       );
     } on PassportReadException catch (e) {
       iosErrorMessage = e.failure.message;

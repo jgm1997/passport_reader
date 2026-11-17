@@ -67,6 +67,7 @@ class _ReadyToScanScreenState extends State<ReadyToScanScreen> {
     ReadStage.readingDetails => 'Reading your details...',
     ReadStage.readingPhoto => 'Reading the photo (a few seconds)...',
     ReadStage.readingSecurityData => 'Reading security data...',
+    ReadStage.checkingChip => 'Checking the chip is genuine...',
     ReadStage.done => 'Done',
   };
 
