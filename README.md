@@ -137,6 +137,7 @@ This is a learning project. Before relying on any part of it, note that:
 - **CRL checking fails open by default** (`REQUIRE_CRL` off), and CRLs are not refreshed automatically.
 - **PACE parsing in `dmrtd`** fails on some chips (`PACEInfo` without the optional `parameterId`); the app falls back to BAC.
 - **Only Brainpool r1 curves** (256/384/512) are supported when certificates use explicit EC parameters.
+- **6 CSCAs from the German master list are skipped** (Austria, United Arab Emirates and Japan) because their certificates have encoding errors. Each of these countries has other valid CSCAs in the list, so their passports can still be verified.
 - **No liveness or face matching**: the app doesn't check that the person holding the phone is the passport holder.
 - **Not reviewed** for production, legal or regulatory compliance (e.g. GDPR for biometric data, export-compliance rules for apps using encryption).
 
