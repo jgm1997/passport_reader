@@ -7,11 +7,12 @@ import binascii
 import logging
 from typing import Annotated
 
-from fastapi import FastAPI, HTTPException, Request
+from fastapi import Depends, FastAPI, Header, HTTPException, Request
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel, ConfigDict, Field, StringConstraints
 
+from app.integrity import IntegrityChecker, IntegrityMode
 from app.passive_auth import verify_passive_auth
 from app.revocation import CrlStore
 from app.trust_store import TrustStore
@@ -52,8 +53,15 @@ def _decode(value: str, label: str) -> bytes:
     return data
 
 
+async def raw_body(request: Request) -> bytes:
+    return await request.body()  # Starlette caches it, so model parsing still works
+
+
 def create_app(
-    trust: TrustStore, crls: CrlStore | None = None, require_crl: bool = False
+    trust: TrustStore,
+    crls: CrlStore | None = None,
+    require_crl: bool = False,
+    integrity: IntegrityChecker | None = None,
 ) -> FastAPI:
     app = FastAPI(title="Passport verification")
 
@@ -75,7 +83,24 @@ def create_app(
         }
 
     @app.post("/v1/passive-auth", response_model=VerifyResponse)
-    def passive_auth(request: VerifyRequest) -> VerifyResponse:
+    def passive_auth(
+        request: VerifyRequest,
+        body: bytes = Depends(raw_body),
+        x_integrity_token: str | None = Header(default=None),
+    ) -> VerifyResponse:
+        if integrity is not None:
+            verdict = integrity.check(x_integrity_token, body)
+            log.info(
+                "integrity ok=%s %s problems=%s",
+                verdict.ok,
+                verdict.summary,
+                ",".join(verdict.problems) or "-",
+            )
+            if integrity.mode is IntegrityMode.ENFORCE and not verdict.ok:
+                raise HTTPException(
+                    status_code=403, detail="Device integrity check failed"
+                )
+
         groups: dict[int, bytes] = {}
         for number, value in request.data_groups.items():
             if not 1 <= number <= 16:

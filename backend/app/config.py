@@ -5,6 +5,7 @@ from collections.abc import Mapping
 from dataclasses import dataclass
 from pathlib import Path
 
+from app.integrity import GooglePlayDecoder, IntegrityChecker, IntegrityMode
 from app.revocation import CrlStore
 from app.trust_store import TrustStore, load_certificates
 
@@ -13,6 +14,7 @@ from app.trust_store import TrustStore, load_certificates
 class Settings:
     trust: TrustStore
     crls: CrlStore
+    integrity: IntegrityChecker
     require_crl: bool
     master_lists_verified: bool
 
@@ -25,9 +27,23 @@ def load_settings(env: Mapping[str, str] = os.environ) -> Settings:
         ml_anchors=anchors,
         allow_unverified_master_lists=env.get("ALLOW_UNVERIFIED_MASTER_LISTS") == "1",
     )
+    mode = IntegrityMode(os.environ.get("INTEGRITY_MODE", "off"))
+    integrity = None
+    if mode is not IntegrityMode.OFF:
+        sa_file = os.environ.get("PLAY_INTEGRITY_SA_FILE")
+        if not sa_file:
+            raise ValueError(
+                "INTEGRITY_MODE needs PLAY_INTEGRITY_SA_FILE (service account JSON)"
+            )
+        integrity = IntegrityChecker(
+            mode,
+            GooglePlayDecoder(sa_file),
+            require_play_recognized=os.environ.get("REQUIRE_PLAY_RECOGNIZED") == "1",
+        )
     return Settings(
         trust=trust,
         crls=CrlStore.from_directory(env.get("CRL_DIR", "crls")),
+        integrity=integrity,
         require_crl=env.get("REQUIRE_CRL") == "1",
         master_lists_verified=anchors is not None,
     )

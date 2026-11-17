@@ -9,6 +9,7 @@ dependencies = [
     "asn1crypto>=1.5.1",
     "cryptography>=42",
     "httpx2>=2.16.0",
+    "google-auth[requests]>=2.62.2",
 ]
 
 [dependency-groups]
