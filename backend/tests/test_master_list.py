@@ -9,7 +9,8 @@ def _cert(path):
 
 
 def test_verified_master_list_lets_us_trust_utopia(master_list, neverland, passport):
-    cscas = load_master_list(master_list, anchors=[_cert(neverland / "anchor.pem")])
+    cscas, skipped = load_master_list(master_list, anchors=[_cert(neverland / "anchor.pem")])
+    assert skipped == 0
     trust = TrustStore(cscas)
     assert trust.countries == {"UT"}
 

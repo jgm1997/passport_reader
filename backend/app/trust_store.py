@@ -82,9 +82,10 @@ def load_certificates(path: str | Path) -> list[x509.Certificate]:
 
 
 class TrustStore:
-    def __init__(self, cscas: list[x509.Certificate]):
+    def __init__(self, cscas: list[x509.Certificate], skipped: int = 0):
         # Only real CAs may act as trust anchors.
         self._cscas = [c for c in cscas if _is_ca(c)]
+        self._skipped = skipped  # unreadable certificates dropped from master lists
 
     def __len__(self) -> int:
         return len(self._cscas)
@@ -92,6 +93,10 @@ class TrustStore:
     @property
     def certificates(self) -> list[x509.Certificate]:
         return list(self._cscas)
+
+    @property
+    def skipped(self) -> int:
+        return self._skipped
 
     @property
     def countries(self) -> set[str]:
@@ -112,6 +117,7 @@ class TrustStore:
         allow_unverified_master_lists: bool = False,
     ) -> TrustStore:
         certs: list[x509.Certificate] = []
+        skipped = 0
         for file in sorted(Path(path).iterdir()):
             if file.suffix.lower() == ".ml":
                 if ml_anchors is None and not allow_unverified_master_lists:
@@ -120,17 +126,19 @@ class TrustStore:
                         "root certificate in anchors/ (or set ALLOW_UNVERIFIED_MASTER_LISTS=1)"
                     )
                 try:
-                    certs += load_master_list(file.read_bytes(), ml_anchors)
+                    ml_certs, ml_skipped = load_master_list(file.read_bytes(), ml_anchors)
+                    certs += ml_certs
+                    skipped += ml_skipped
                 except MasterListError as e:
                     raise MasterListError(f"{file.name}: {e}") from e
             elif file.is_file():
                 certs += load_certificates_from_file(file)
-        return cls(certs)
+        return cls(certs, skipped)
 
 
 def load_master_list(
     data: bytes, anchors: list[x509.Certificate] | None, now: datetime | None = None
-) -> list[x509.Certificate]:
+) -> tuple[list[x509.Certificate], int]:
     """
     Extracts CSCA certificates from an ICAO CSCA Master List (.ml).
 
@@ -138,6 +146,7 @@ def load_master_list(
     issued by one of the anchors. With `anchors=None` nothing is verified, so you
     are trusting the channel you downloaded the file from.
     """
+    skipped = 0
     try:
         signed = load_signed_data(data)
         content = encapsulated_content(signed, CSCA_MASTER_LIST)
@@ -155,8 +164,8 @@ def load_master_list(
         try:
             certs.append(x509.load_der_x509_certificate(entry.dump()))
         except ValueError:
-            continue  # e.g. explicit EC curve parameters, unsupported by `cryptography`
-    return certs
+            skipped += 1  # malformed certificate (e.g. non-positive serial): ignore it, keep the rest
+    return certs, skipped
 
 
 def _verify_master_list_signer(

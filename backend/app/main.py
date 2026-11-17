@@ -10,8 +10,9 @@ log = logging.getLogger("passport.verify")
 
 settings = load_settings()
 log.info(
-    "Loaded %d CSCA certificates for %d countries; %d CRLs",
+    "Loaded %d CSCA certificates (%d skipped) for %d countries; %d CRLs",
     len(settings.trust),
+    settings.trust.skipped,
     len(settings.trust.countries),
     len(settings.crls),
 )

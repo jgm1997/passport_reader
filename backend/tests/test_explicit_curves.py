@@ -33,7 +33,8 @@ def test_master_list_signed_with_explicit_curve_is_accepted(
     explicit_master_list, explicitland
 ):
     """The exact situation of the German master list."""
-    cscas = load_master_list(
+    cscas, skipped = load_master_list(
         explicit_master_list, anchors=[_cert(explicitland / "csca.pem")]
     )
+    assert skipped == 0
     assert TrustStore(cscas).countries == {"UT"}
