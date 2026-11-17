@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import logging
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any, ClassVar
@@ -21,6 +22,7 @@ from app.cms_verify import (
 )
 from app.ec_keys import public_key_of, verify_certificate_signature
 
+log = logging.getLogger("passport.verify")
 CSCA_MASTER_LIST = "2.23.136.1.1.2"
 
 
@@ -126,7 +128,9 @@ class TrustStore:
                         "root certificate in anchors/ (or set ALLOW_UNVERIFIED_MASTER_LISTS=1)"
                     )
                 try:
-                    ml_certs, ml_skipped = load_master_list(file.read_bytes(), ml_anchors)
+                    ml_certs, ml_skipped = load_master_list(
+                        file.read_bytes(), ml_anchors
+                    )
                     certs += ml_certs
                     skipped += ml_skipped
                 except MasterListError as e:
@@ -163,8 +167,15 @@ def load_master_list(
     for entry in entries:
         try:
             certs.append(x509.load_der_x509_certificate(entry.dump()))
-        except ValueError:
-            skipped += 1  # malformed certificate (e.g. non-positive serial): ignore it, keep the rest
+        except ValueError as e:
+            skipped += 1
+            try:
+                country = entry["tbs_certificate"]["subject"].native.get(
+                    "country_name", "?"
+                )
+            except Exception:  # noqa: BLE001 - diagnostics only, never fatal
+                country = "?"
+            log.info("Skipped an unreadable CSCA (country=%s): %s", country, e)
     return certs, skipped
 
 
