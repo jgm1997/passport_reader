@@ -14,13 +14,15 @@ A cross-platform (Android/iOS) Flutter app that reads an ePassport's chip over N
 4. **Decodes the photo**, including **JPEG2000**, with a pure-Dart decoder running in a background isolate.
 5. **Verifies authenticity (Passive Authentication)** on the server: SOD signature → Document Signer certificate → trusted CSCA (from a master list whose own signature is verified against a pinned root) → data group hashes, plus optional CRL revocation checks.
 6. **Verifies the photo on the phone.** The photo is **never uploaded**: the app hashes DG2 locally and compares it with the hash the issuing country signed, which the server returns only after verifying the whole chain.
+7. **Proves the request comes from the genuine app** (Android): each request carries a **Google Play Integrity** token bound to the exact request body, which the server can log or enforce.
 
 ```text
 Phone (Flutter)                                     Server (Python / FastAPI)
 ───────────────                                     ─────────────────────────
 Camera ─▶ MRZ ─▶ NFC (PACE/BAC) ─▶ DG1, DG2, SOD
-SOD + DG1 (+ DG14/15)  ──── POST /v1/passive-auth ──▶ CMS signature, certificate chain,
-                                                     validity, revocation, DG hashes
+SOD + DG1 (+ DG14/15)  ── POST /v1/passive-auth ────▶ Play Integrity token (optional),
+  + X-Integrity-Token     (HTTPS, pinned CA)          CMS signature, certificate chain,
+                                                      validity, revocation, DG hashes
                        ◀── verdict + signed hashes ──
 SHA(DG2) == signed DG2 hash?  → photo verified on-device
 ```
@@ -30,15 +32,23 @@ SHA(DG2) == signed DG2 hash?  → photo verified on-device
 ```text
 lib/
   core/            Logic with no UI: MRZ parsing, chip reading, image decoding,
-                   verification client. Unit-tested.
+                   verification client, pinned TLS, device integrity, privacy cover.
+                   Unit-tested.
   features/        Screens: home, MRZ scan, manual entry, NFC read, result.
+android/           Android host app, including the Play Integrity method channel
+                   and screen protection (MainActivity.kt).
 test/              Flutter tests (ICAO sample passport and synthetic data only).
+tool/              make_test_certs.sh: throwaway TLS fixtures for the tests.
+scripts/           dev_adb_reverse.sh: forwards the phone's port 8000 to the laptop.
 backend/
-  app/             FastAPI server: Passive Authentication, trust store, CRLs.
+  app/             FastAPI server: Passive Authentication, trust store, CRLs,
+                   Play Integrity checks.
   tests/           Pytest suite using fictional countries generated with OpenSSL.
   tools/           LDIF extraction (ICAO PKD) and CRL address lookup.
   scripts/         checkpoint.sh: one-command health check of the backend.
+                   dev_pki.sh: development CA and localhost TLS certificate.
   anchors/         Pinned root certificate(s) trusted to sign master lists.
+.github/           CI workflow and Dependabot configuration.
 codemagic.yaml     Cloud iOS builds (no Mac required).
 ```
 
@@ -81,36 +91,64 @@ The server only trusts CSCA certificates that come from a **master list whose si
 
 `trust/` and `crls/` are git-ignored: master lists and PKD data come with their own terms of use, so download them yourself.
 
+### Development TLS certificate
+
+The app only talks HTTPS, and only to servers whose certificate chains to a CA pinned in `lib/core/network/pinned_cas.dart`. For local development, create a private CA and a `localhost` certificate:
+
+```bash
+./scripts/dev_pki.sh          # creates pki/ca.pem once; re-run to renew pki/server.pem
+```
+
+The CA is created once per machine. On a new machine, paste the new `pki/ca.pem` into `_developmentCas` in `pinned_cas.dart`. Development CAs are trusted by debug builds only, never by release builds. `pki/` is git-ignored; never commit `ca.key`.
+
+The script works in WSL, Linux, macOS and Git Bash on Windows.
+
 ### Start it
 
 ```bash
 ./scripts/checkpoint.sh       # environment, tests, trust store and /health in one go
-TRUST_DIR=trust uv run uvicorn app.main:app --host 127.0.0.1 --port 8000
+TRUST_DIR=trust uv run uvicorn app.main:app --host 127.0.0.1 --port 8000 \
+  --ssl-keyfile pki/server.key --ssl-certfile pki/server.pem
 ```
 
-| Variable                        | Default   | Meaning                                                                      |
-| ------------------------------- | --------- | ---------------------------------------------------------------------------- |
-| `TRUST_DIR`                     | `trust`   | Master lists and CSCA certificates                                           |
-| `ML_ANCHORS_DIR`                | `anchors` | Roots trusted to sign master lists                                           |
-| `CRL_DIR`                       | `crls`    | Certificate revocation lists                                                 |
-| `REQUIRE_CRL`                   | off       | `1` = fail when a CRL is missing or out of date (fail closed)                |
-| `ALLOW_UNVERIFIED_MASTER_LISTS` | off       | `1` = accept master lists without checking their signature (not recommended) |
+In VS Code, the **Backend + Flutter** launch configuration starts the server (with TLS and `INTEGRITY_MODE=report`) and the app together.
 
-The server logs verification **outcomes only**, never names, numbers or raw data.
+| Variable                        | Default   | Meaning                                                                                     |
+| ------------------------------- | --------- | ------------------------------------------------------------------------------------------- |
+| `TRUST_DIR`                     | `trust`   | Master lists and CSCA certificates                                                          |
+| `ML_ANCHORS_DIR`                | `anchors` | Roots trusted to sign master lists                                                          |
+| `CRL_DIR`                       | `crls`    | Certificate revocation lists                                                                |
+| `REQUIRE_CRL`                   | off       | `1` = fail when a CRL is missing or out of date (fail closed)                               |
+| `ALLOW_UNVERIFIED_MASTER_LISTS` | off       | `1` = accept master lists without checking their signature (not recommended)                |
+| `INTEGRITY_MODE`                | `off`     | Play Integrity: `off`, `report` (check and log, never block) or `enforce` (reject with 403) |
+| `PLAY_INTEGRITY_SA_FILE`        | (none)    | Google service-account JSON used to decode tokens. Required unless `INTEGRITY_MODE=off`     |
+| `REQUIRE_PLAY_RECOGNIZED`       | off       | `1` = also require the app to be the build distributed by Google Play                       |
+
+### Play Integrity (optional)
+
+1. Link a Google Cloud project to the app in the Play Console and enable the **Play Integrity API**.
+2. Create a service account with access to the API, download its JSON key into `backend/secrets/` (git-ignored), and point `PLAY_INTEGRITY_SA_FILE` at it.
+3. Run the app with `--dart-define=PLAY_CLOUD_PROJECT_NUMBER=<number>`. Without it, the app sends no token.
+
+The server checks that the token is for this app's package, is less than 2 minutes old, matches the SHA-256 of the request body, and reports `MEETS_DEVICE_INTEGRITY`. Start with `report` and read the logs before switching to `enforce`.
+
+The server logs verification **outcomes only**, never names, numbers or raw data. Integrity logs contain verdict labels only.
 
 ## Running the app
 
 ```bash
 flutter pub get
+tool/make_test_certs.sh       # TLS fixtures the tests need (not committed)
 flutter test
 
-# Phone connected (USB or wireless debugging), server running locally:
-adb reverse tcp:8000 tcp:8000
-flutter run --dart-define=VERIFY_URL=http://localhost:8000
+# Phone connected (USB or wireless debugging), server running locally with TLS:
+scripts/dev_adb_reverse.sh
+flutter run --dart-define=VERIFY_URL=https://localhost:8000 \
+  --dart-define=PLAY_CLOUD_PROJECT_NUMBER=<number>   # optional
 ```
 
-- Plain HTTP is allowed **only in debug builds and only for `localhost`** (`android/app/src/debug/`). Release builds refuse any non-HTTPS verification URL.
-- **Wireless debugging from WSL:** `adb pair <ip:port>`, then `adb connect <ip:port>`. Re-run `adb reverse` after reconnecting.
+- The verification URL **must use `https://`**: the client refuses anything else, in every build mode.
+- **Wireless debugging from WSL:** `adb pair <ip:port>`, then `adb connect <ip:port>`. Re-run `scripts/dev_adb_reverse.sh` after reconnecting.
 - **Reading the chip:** remove thick or metal cases, open the passport at the photo page (some passports keep the chip in the cover), and hold the phone still until the read finishes.
 
 ## iOS builds without a Mac
@@ -120,9 +158,24 @@ flutter run --dart-define=VERIFY_URL=http://localhost:8000
 - **`ios-compile-check`**: an unsigned build that confirms the iOS project compiles. It works on Codemagic's free tier.
 - **`ios-testflight`**: a signed build uploaded to TestFlight. It needs a paid Apple Developer membership, an App ID with **NFC Tag Reading** enabled, and an App Store Connect API key. **Never commit the `.p8` key.**
 
+## Continuous integration
+
+GitHub Actions (`.github/workflows/ci.yml`) runs on every push to `main` and every pull request:
+
+- **No secrets in the repository**: fails if key material (`.p8`, `.p12`, `.jks`, `.key`, Play Integrity JSON, …) is tracked by git.
+- **Flutter tests**: `dart format` check, `flutter analyze`, test certificates, `flutter test`.
+- **Backend tests**: `uv sync --locked` and `pytest`.
+- **Android build**: Gradle wrapper validation and a debug APK build.
+
+Dependabot keeps the backend's Python dependencies and the workflow's GitHub Actions up to date.
+
 ## Security model
 
 - **Authenticity is decided on the server**, never on the phone. The app's "Verified" badge is display only; a real system would act on the server's verdict.
+- **The connection is pinned**: the app accepts only certificates issued by its own CAs (`pinned_cas.dart`), not the device's trust store. Debug and release builds pin different CAs.
+- **Device integrity (Android)**: requests can carry a Play Integrity token bound to the SHA-256 of the exact request body, so a token can't be reused for another request. The app never decides what a missing token means; the server does (`INTEGRITY_MODE`).
+- **Screen protection**: screenshots and screen recording are blocked (`FLAG_SECURE`), other apps' overlay windows are hidden on Android 12+ (anti-tapjacking), and the app-switcher snapshot shows a neutral cover instead of passport data.
+- **No keyboard learning**: the manual MRZ entry fields disable suggestions, autocorrect and personalised keyboard learning, so passport numbers and dates aren't stored by the keyboard.
 - **Untrusted input is parsed defensively**: strict ASN.1 parsing, size limits on every field, memory-safe decoders, and one clear failure type per layer.
 - **Minimum data leaves the phone**: SOD, DG1 and DG14/DG15 only. **DG2 (the face) is verified on-device.** Fingerprint and iris groups (DG3/DG4) are inaccessible to the app and refused by the server.
 - **Secure defaults**: unverified master lists are refused, explicit-parameter EC keys are accepted only when they exactly match a vetted curve, and weak settings are announced at server start-up.
@@ -133,7 +186,8 @@ flutter run --dart-define=VERIFY_URL=http://localhost:8000
 This is a learning project. Before relying on any part of it, note that:
 
 - **No anti-cloning check yet.** Passive Authentication proves the data is genuine, but not that the chip isn't a copy (Active/Chip Authentication is the next step).
-- **No TLS / certificate pinning** between app and server yet, so a network attacker could alter the server's answer.
+- **No production CA is pinned yet**, so release builds can't reach any verification server. Only development CAs are configured.
+- **Device integrity is off by default** (`INTEGRITY_MODE=off`) and exists on **Android only**. iOS (App Attest) isn't implemented, so iOS requests never carry a token and would be rejected in `enforce` mode.
 - **CRL checking fails open by default** (`REQUIRE_CRL` off), and CRLs are not refreshed automatically.
 - **PACE parsing in `dmrtd`** fails on some chips (`PACEInfo` without the optional `parameterId`); the app falls back to BAC.
 - **Only Brainpool r1 curves** (256/384/512) are supported when certificates use explicit EC parameters.
@@ -151,7 +205,8 @@ All tests use either the **ICAO 9303 specimen passport** (`L898902C3`, "ANNA MAR
 - [`j2k`](https://pub.dev/packages/j2k): pure-Dart JPEG 2000 decoder.
 - [Google ML Kit text recognition](https://pub.dev/packages/google_mlkit_text_recognition): on-device OCR.
 - `camera`, `http`, `crypto`: Flutter/Dart packages.
-- Server: FastAPI, uvicorn, `asn1crypto`, `cryptography`.
+- [Play Integrity API](https://developer.android.com/google/play/integrity) (`com.google.android.play:integrity`): device and app attestation on Android.
+- Server: FastAPI, uvicorn, `asn1crypto`, `cryptography`, `google-auth` (to decode Play Integrity tokens).
 - Master lists and PKD data (BSI, ICAO) are **not included** and are subject to their publishers' terms.
 
 ## Licence
