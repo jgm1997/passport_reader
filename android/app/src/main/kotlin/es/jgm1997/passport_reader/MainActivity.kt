@@ -15,11 +15,16 @@ class MainActivity : FlutterActivity() {
     private var integrityProvider: StandardIntegrityTokenProvider? = null
 
     override fun onCreate(savedInstanceBundle: Bundle?) {
-        // Set BEFORE super.onCreate, so even the very first frame is protected
-        window.setFlags(
-            WindowManager.LayoutParams.FLAG_SECURE,
-            WindowManager.LayoutParams.FLAG_SECURE
-        )
+        // Real builds always block capture. Only the separate .demo app allows it.
+        if (!BuildConfig.ALLOW_SCREEN_CAPTURE) {
+            // Set BEFORE super.onCreate, so even the very first frame is protected
+            window.setFlags(
+                WindowManager.LayoutParams.FLAG_SECURE,
+                WindowManager.LayoutParams.FLAG_SECURE
+            )
+        }
+
+
         super.onCreate(savedInstanceBundle)
 
         // Android 12+: hide other apps' overlay windows while ours is in front (anti-tapjacking)

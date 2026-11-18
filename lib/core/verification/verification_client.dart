@@ -46,7 +46,12 @@ class VerificationException implements Exception {
   String toString() => 'VerificationException(${failure.message})';
 }
 
-class VerificationClient {
+abstract interface class PassportVerifier {
+  Future<VerificationResult> verify(PassportData data);
+  void close();
+}
+
+class VerificationClient implements PassportVerifier {
   final Uri _baseUri;
   final http.Client _http;
   final DeviceIntegrity? _integrity;
@@ -85,6 +90,7 @@ class VerificationClient {
   /// DG2 (the photo) is delberately NOT sent: it's verified on the phone
   static const Set<int> sentDataGroups = {1, 14, 15};
 
+  @override
   Future<VerificationResult> verify(PassportData data) async {
     final bodyBytes = utf8.encode(
       jsonEncode({
@@ -142,5 +148,6 @@ class VerificationClient {
     }
   }
 
+  @override
   void close() => _http.close();
 }

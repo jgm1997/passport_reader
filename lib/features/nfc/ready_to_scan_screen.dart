@@ -1,4 +1,5 @@
 import 'package:material_ui/material_ui.dart';
+import 'package:passport_reader/core/app_services.dart';
 import 'package:passport_reader/core/mrz/mrz_key.dart';
 import 'package:passport_reader/core/mrz/utils/date_format.dart';
 import 'package:passport_reader/core/passport/passport_reader.dart';
@@ -14,7 +15,7 @@ class ReadyToScanScreen extends StatefulWidget {
 }
 
 class _ReadyToScanScreenState extends State<ReadyToScanScreen> {
-  final _reader = PassportReader();
+  final _reader = AppServices.chipReader();
   bool _reading = false;
   ReadStage _stage = ReadStage.waitingForPassport;
   double _progress = 0;

@@ -57,12 +57,19 @@ class PassportReadException implements Exception {
   String toString() => 'PassportReadException(${failure.name})';
 }
 
+/// Anything that can produce PassportData from an MRZ key: the real NFC
+/// reader, or the demo reader
+abstract interface class ChipReader {
+  Future<PassportData> read(MrzKey key, {ReadProgressCallback? onProgress});
+}
+
 // --- Reader ---
-class PassportReader {
+class PassportReader implements ChipReader {
   final NfcProvider _nfc;
 
   PassportReader({NfcProvider? nfc}) : _nfc = nfc ?? NfcProvider();
 
+  @override
   Future<PassportData> read(
     MrzKey key, {
     ReadProgressCallback? onProgress,

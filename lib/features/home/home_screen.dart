@@ -1,6 +1,9 @@
 import 'package:material_ui/material_ui.dart';
+import 'package:passport_reader/core/demo/demo_mode.dart';
+import 'package:passport_reader/core/demo/demo_services.dart';
 import 'package:passport_reader/features/mrz_entry/manual_entry_screen.dart';
 import 'package:passport_reader/features/mrz_scan/mrz_scan_screen.dart';
+import 'package:passport_reader/features/nfc/ready_to_scan_screen.dart';
 
 class HomeScreen extends StatelessWidget {
   const HomeScreen({super.key});
@@ -48,6 +51,18 @@ class HomeScreen extends StatelessWidget {
                 icon: const Icon(Icons.keyboard_outlined),
                 label: const Text('Enter details manually'),
               ),
+              if (kDemoMode) ...[
+                const SizedBox(height: 12),
+                FilledButton.tonalIcon(
+                  onPressed: () => Navigator.of(context).push(
+                    MaterialPageRoute(
+                      builder: (_) => ReadyToScanScreen(mrzKey: demoMrzKey),
+                    ),
+                  ),
+                  icon: const Icon(Icons.badge_outlined),
+                  label: const Text('Try with a sample passport'),
+                ),
+              ],
             ],
           ),
         ),

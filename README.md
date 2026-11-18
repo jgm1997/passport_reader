@@ -27,6 +27,15 @@ SOD + DG1 (+ DG14/15)  ── POST /v1/passive-auth ────▶ Play Integri
 SHA(DG2) == signed DG2 hash?  → photo verified on-device
 ```
 
+## Screenshots
+
+|                                                          Home                                                          |                                                  Chip read                                                   |                                                Result                                                |
+| :--------------------------------------------------------------------------------------------------------------------: | :----------------------------------------------------------------------------------------------------------: | :--------------------------------------------------------------------------------------------------: |
+| ![Home screen with options to scan the MRZ, enter details manually or try a sample passport](assets/demo/demoHome.png) | ![Chip reading screen showing the masked document number, dates and read progress](assets/demo/demoScan.png) | ![Result screen with verification status cards and the holder's details](assets/demo/demoResult.png) |
+|                      Scan the MRZ with the camera, enter it by hand, or try the sample passport.                       |                     The document number is masked while the app reads the chip over NFC.                     |          Verification, anti-cloning and MRZ consistency checks, plus the holder's details.           |
+
+_All screenshots come from the demo build and use the ICAO 9303 specimen passport. No real data is shown._
+
 ## Repository layout
 
 ```text

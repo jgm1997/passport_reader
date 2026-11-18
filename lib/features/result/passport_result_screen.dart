@@ -1,5 +1,6 @@
 import 'package:flutter/foundation.dart';
 import 'package:material_ui/material_ui.dart';
+import 'package:passport_reader/core/app_services.dart';
 import 'package:passport_reader/core/mrz/mrz_key.dart';
 import 'package:passport_reader/core/mrz/utils/date_format.dart';
 import 'package:passport_reader/core/passport/chip_auth_result.dart';
@@ -36,7 +37,7 @@ class _PassportResultScreenState extends State<PassportResultScreen> {
   }
 
   Future<VerificationResult> _verify() async {
-    final client = VerificationClient.fromEnvironment();
+    final client = AppServices.verifier();
     try {
       final result = await client.verify(widget.data);
       final dg2 = widget.data.rawDataGroups[2];

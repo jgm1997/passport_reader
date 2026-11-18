@@ -29,6 +29,26 @@ android {
         versionName = flutter.versionName
     }
 
+    buildFeatures {
+        buildConfig = true
+        resValues = true
+    }
+
+    flavorDimensions += "mode"
+    productFlavors {
+        create("real") {
+            dimension = "mode"
+            resValue("string", "app_name", "Passport Reader")
+            buildConfigField("boolean", "ALLOW_SCREEN_CAPTURE", "false")
+        }
+        create("demo") {
+            dimension = "mode"
+            applicationIdSuffix = ".demo"
+            resValue("string", "app_name", "Passport Reader DEMO")
+            buildConfigField("boolean", "ALLOW_SCREEN_CAPTURE", "true")
+        }
+    }
+
     buildTypes {
         release {
             // TODO: Add your own signing config for the release build.
