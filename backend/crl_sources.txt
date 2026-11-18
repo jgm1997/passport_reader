@@ -1,2 +1,2 @@
 # name   url
-ES       http://example/csca-spain.crl
+ES       http://pki.policia.es/csca/crls/ESP.crl
