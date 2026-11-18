@@ -43,7 +43,8 @@ class MainActivity : FlutterActivity() {
                         if (project == null) {
                             result.error(
                                 "BAD_ARGS",
-                                "cloudProjectNumber missing or not a number (got ${raw?.javaClass?.simpleName ?: "nothing"})",
+                                "cloudProjectNumber missing or not a number (got ${raw?.javaClass?.simpleName ?: "nothing"}; " +
+                                        "keys=${(call.arguments as? Map<*, *>)?.keys})",
                                 null
                             )
                             return@setMethodCallHandler

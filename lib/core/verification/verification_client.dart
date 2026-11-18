@@ -86,7 +86,7 @@ class VerificationClient {
   static const Set<int> sentDataGroups = {1, 14, 15};
 
   Future<VerificationResult> verify(PassportData data) async {
-    final body = utf8.encode(
+    final bodyBytes = utf8.encode(
       jsonEncode({
         'sod': base64Encode(data.rawSod),
         'dataGroups': {
@@ -96,7 +96,7 @@ class VerificationClient {
       }),
     );
     final token = await _integrity
-        ?.tokenFor(body)
+        ?.tokenFor(bodyBytes)
         .timeout(const Duration(seconds: 5), onTimeout: () => null);
 
     final http.Response response;
@@ -108,7 +108,7 @@ class VerificationClient {
               'Content-Type': 'application/json',
               'X-Integrity-Token': ?token,
             },
-            body: body,
+            body: bodyBytes,
           )
           .timeout(timeout);
     } on TimeoutException {
