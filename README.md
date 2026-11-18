@@ -10,16 +10,19 @@ A cross-platform (Android/iOS) Flutter app that reads an ePassport's chip over N
 
 1. **Scans the MRZ** (the two `<<<` lines on the photo page) with the camera, using on-device OCR, and validates every ICAO 9303 check digit.
 2. **Unlocks the chip** over NFC with **PACE** when supported, falling back to **BAC**, using a key derived from the MRZ.
-3. **Reads the data groups**: DG1 (holder's details), DG2 (face photo), DG14/DG15 when present, and the **SOD** (the issuing country's signature over all data group hashes).
-4. **Decodes the photo**, including **JPEG2000**, with a pure-Dart decoder running in a background isolate.
-5. **Verifies authenticity (Passive Authentication)** on the server: SOD signature → Document Signer certificate → trusted CSCA (from a master list whose own signature is verified against a pinned root) → data group hashes, plus optional CRL revocation checks.
-6. **Verifies the photo on the phone.** The photo is **never uploaded**: the app hashes DG2 locally and compares it with the hash the issuing country signed, which the server returns only after verifying the whole chain.
-7. **Proves the request comes from the genuine app** (Android): each request carries a **Google Play Integrity** token bound to the exact request body, which the server can log or enforce.
+3. **Reads the small files first**: DG1 (holder's details), DG14/DG15 when present, and the **SOD** (the issuing country's signature over all data group hashes).
+4. **Checks the chip isn't a clone (Chip Authentication)**: proves the chip holds the private key matching DG14's public key, and switches to new session keys derived from that exchange.
+5. **Reads the photo (DG2) last**, because it's the largest file. After a successful Chip Authentication it is read over the new session in 223-byte chunks (the largest that fits a short APDU with both 3DES and AES), with every response MAC-checked. Otherwise, or if that read fails, the app falls back to `dmrtd`'s slower adaptive read.
+6. **Decodes the photo**, including **JPEG2000**, with a pure-Dart decoder running in a background isolate.
+7. **Verifies authenticity (Passive Authentication)** on the server: SOD signature → Document Signer certificate → trusted CSCA (from a master list whose own signature is verified against a pinned root) → data group hashes, plus optional CRL revocation checks.
+8. **Verifies the photo on the phone.** The photo is **never uploaded**: the app hashes DG2 locally and compares it with the hash the issuing country signed, which the server returns only after verifying the whole chain.
+9. **Proves the request comes from the genuine app** (Android): each request carries a **Google Play Integrity** token bound to the exact request body, which the server can log or enforce.
 
 ```text
 Phone (Flutter)                                     Server (Python / FastAPI)
 ───────────────                                     ─────────────────────────
-Camera ─▶ MRZ ─▶ NFC (PACE/BAC) ─▶ DG1, DG2, SOD
+Camera ─▶ MRZ ─▶ NFC (PACE/BAC) ─▶ DG1, DG14/15, SOD
+               ─▶ Chip Authentication ─▶ DG2 (photo)
 SOD + DG1 (+ DG14/15)  ── POST /v1/passive-auth ────▶ Play Integrity token (optional),
   + X-Integrity-Token     (HTTPS, pinned CA)          CMS signature, certificate chain,
                                                       validity, revocation, DG hashes
@@ -185,6 +188,8 @@ Dependabot keeps the backend's Python dependencies and the workflow's GitHub Act
 - **Device integrity (Android)**: requests can carry a Play Integrity token bound to the SHA-256 of the exact request body, so a token can't be reused for another request. The app never decides what a missing token means; the server does (`INTEGRITY_MODE`).
 - **Screen protection**: screenshots and screen recording are blocked (`FLAG_SECURE`), other apps' overlay windows are hidden on Android 12+ (anti-tapjacking), and the app-switcher snapshot shows a neutral cover instead of passport data.
 - **No keyboard learning**: the manual MRZ entry fields disable suggestions, autocorrect and personalised keyboard learning, so passport numbers and dates aren't stored by the keyboard.
+- **Anti-cloning on the chip**: Chip Authentication proves the chip holds DG14's private key. Explicit curve parameters are accepted only when they exactly match a known curve.
+- **The photo is read strictly**: under the Chip Authentication keys, every READ BINARY must return data that passes the MAC check, with no silent retry or recovery. The file's length header is checked before any further reads, and files over 32 KB are refused.
 - **Untrusted input is parsed defensively**: strict ASN.1 parsing, size limits on every field, memory-safe decoders, and one clear failure type per layer.
 - **Minimum data leaves the phone**: SOD, DG1 and DG14/DG15 only. **DG2 (the face) is verified on-device.** Fingerprint and iris groups (DG3/DG4) are inaccessible to the app and refused by the server.
 - **Secure defaults**: unverified master lists are refused, explicit-parameter EC keys are accepted only when they exactly match a vetted curve, and weak settings are announced at server start-up.
@@ -194,7 +199,7 @@ Dependabot keeps the backend's Python dependencies and the workflow's GitHub Act
 
 This is a learning project. Before relying on any part of it, note that:
 
-- **No anti-cloning check yet.** Passive Authentication proves the data is genuine, but not that the chip isn't a copy (Active/Chip Authentication is the next step).
+- **Anti-cloning is partial.** Chip Authentication runs only on chips that have DG14 and use elliptic-curve keys on a supported curve (Brainpool r1 224–512, P-256, P-384, P-521). Classic Diffie-Hellman isn't supported. DG15 is read, but **Active Authentication isn't implemented**, so chips with only DG15 get no anti-cloning check.
 - **No production CA is pinned yet**, so release builds can't reach any verification server. Only development CAs are configured.
 - **Device integrity is off by default** (`INTEGRITY_MODE=off`) and exists on **Android only**. iOS (App Attest) isn't implemented, so iOS requests never carry a token and would be rejected in `enforce` mode.
 - **CRL checking fails open by default** (`REQUIRE_CRL` off), and CRLs are not refreshed automatically.

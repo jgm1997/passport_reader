@@ -23,11 +23,11 @@ class DemoChipReader implements ChipReader {
 
   static const _stages = [
     (ReadStage.waitingForPassport, 0.0, 900),
-    (ReadStage.authenticating, 0.1, 400),
-    (ReadStage.readingDetails, 0.25, 300),
-    (ReadStage.readingPhoto, 0.35, 2500),
-    (ReadStage.readingSecurityData, 0.8, 700),
-    (ReadStage.checkingChip, 0.9, 500),
+    (ReadStage.authenticating, 0.05, 400),
+    (ReadStage.readingDetails, 0.1, 300),
+    (ReadStage.readingSecurityData, 0.15, 700),
+    (ReadStage.checkingChip, 0.2, 500),
+    (ReadStage.readingPhoto, 0.3, 1500),
   ];
 
   @override
