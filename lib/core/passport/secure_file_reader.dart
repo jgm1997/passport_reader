@@ -4,7 +4,7 @@ import 'dart:typed_data';
 import 'package:dmrtd/internal.dart';
 import 'package:passport_reader/core/asn1/der.dart';
 
-/// The largest plaintext chuink whose secure-messaging response still fits in
+/// The largest plaintext chunk whose secure-messaging response still fits in
 /// a short (256-byte) APDU for BOTH 3DES and AES.
 const maxSecureChunk = 223;
 
