@@ -5,14 +5,15 @@ import 'package:passport_reader/core/mrz/mrz_key.dart';
 import 'package:passport_reader/core/passport/chip_auth_result.dart';
 import 'package:passport_reader/core/passport/chip_authentication.dart';
 import 'package:passport_reader/core/passport/passport_data.dart';
+import 'package:passport_reader/core/passport/secure_file_reader.dart';
 
 enum ReadStage {
   waitingForPassport,
   authenticating,
   readingDetails,
-  readingPhoto,
   readingSecurityData,
   checkingChip,
+  readingPhoto,
   done,
 }
 
@@ -105,32 +106,17 @@ class PassportReader implements ChipReader {
       await _connect(pollTimeout);
 
       // 2. Unlock the chip
-      report(ReadStage.authenticating, 0.1);
+      report(ReadStage.authenticating, 0.05);
       final (passport, protocol) = await _openSession(key, pollTimeout);
 
-      // 3. Read the index and the holder's details.
-      report(ReadStage.readingDetails, 0.25);
+      // 3. Index and holder details (small).
+      report(ReadStage.readingDetails, 0.1);
       final com = await passport.readEfCOM();
       final dg1 = await passport.readEfDG1();
       final raw = <int, Uint8List>{1: dg1.toBytes()};
 
-      // 4. Read the photo (the biggest file, so the slowest step)
-      Uint8List? photo;
-      PhotoFormat? photoFormat;
-      if (com.dgTags.contains(EfDG2.TAG)) {
-        report(ReadStage.readingPhoto, 0.35);
-        final dg2 = await passport.readEfDG2();
-        raw[2] = dg2.toBytes();
-        photo = dg2.imageData;
-        photoFormat = switch (dg2.imageType) {
-          ImageType.jpeg => PhotoFormat.jpeg,
-          ImageType.jpeg2000 => PhotoFormat.jpeg2000,
-          null => null,
-        };
-      }
-
-      // 5. Read the security files used for verification.
-      report(ReadStage.readingSecurityData, 0.8);
+      // 4. Security files (small).
+      report(ReadStage.readingSecurityData, 0.15);
       if (com.dgTags.contains(EfDG14.TAG)) {
         final dg14 = await _readOptional(passport.readEfDG14);
         if (dg14 != null) raw[14] = dg14;
@@ -141,15 +127,41 @@ class PassportReader implements ChipReader {
       }
       final sod = await passport.readEfSOD();
 
-      // 6. Anti-cloning: prove the chip holds DG14's private key.
+      // 5. Anti-cloning. On success we also get a session under CA keys.
       var chipAuthentication = const ChipAuthResult(
         ChipAuthStatus.notSupported,
         'This chip has no DG14',
       );
+      CaChannel? caChannel;
       final dg14 = raw[14];
       if (dg14 != null) {
-        report(ReadStage.checkingChip, 0.9);
-        chipAuthentication = await ChipAuthenticator(_nfc).run(key, dg14);
+        report(ReadStage.checkingChip, 0.2);
+        (chipAuthentication, caChannel) = await ChipAuthenticator(_nfc)
+            .run(key, dg14);
+      }
+
+      // 6. The photo: the biggest file, now read last
+      Uint8List? photo;
+      PhotoFormat? photoFormat;
+      if (com.dgTags.contains(EfDG2.TAG)) {
+        report(ReadStage.readingPhoto, 0.3);
+        final dg2Bytes = await _readPhotoFile(
+          key,
+          pollTimeout,
+          passport: passport,
+          caChannel: caChannel,
+          sessionReplaced: dg14 != null,
+          onProgress: (read, total) =>
+              report(ReadStage.readingPhoto, 0.3 + 0.7 * read / total),
+        );
+        raw[2] = dg2Bytes;
+        final dg2 = EfDG2.fromBytes(dg2Bytes);
+        photo = dg2.imageData;
+        photoFormat = switch (dg2.imageType) {
+          ImageType.jpeg => PhotoFormat.jpeg,
+          ImageType.jpeg2000 => PhotoFormat.jpeg2000,
+          null => null,
+        };
       }
       report(ReadStage.done, 1);
 
@@ -267,6 +279,39 @@ class PassportReader implements ChipReader {
       if (e is ComProviderError) rethrow;
       return null;
     }
+  }
+
+  /// Reads DG2 fast under the CA session if we have one, otherwise (or if
+  /// that fails) with dmrtd's own adaptive, slower read.
+  Future<Uint8List> _readPhotoFile(
+    MrzKey key,
+    Duration timeout, {
+    required Passport passport,
+    required CaChannel? caChannel,
+    required bool sessionReplaced,
+    FileReadProgress? onProgress,
+  }) async {
+    if (caChannel != null) {
+      try {
+        return await readWholeFile(
+          caChannel.readBinary,
+          sfi: EfDG2.SFI,
+          onProgress: onProgress,
+        );
+      } on ComProviderError {
+        rethrow; // The passport moved away: a fallback can't help.
+      } catch (e) {
+        if (kDebugMode) {
+          debugPrint('Fast photo read failed (${e.runtimeType}), using dmrtd');
+        }
+      }
+    }
+    // If Chip Authentication ran, it replaced the session `passport` used,
+    // so dmrtd needs a fresh one first.
+    final reader = sessionReplaced
+        ? (await _openSession(key, timeout)).$1
+        : passport;
+    return (await reader.readEfDG2()).toBytes();
   }
 
   /// dmrtd reports errors as text, so we classify them by their wording

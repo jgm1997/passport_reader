@@ -26,24 +26,51 @@ import 'package:pointycastle/export.dart' as pc;
 import 'chip_auth_result.dart';
 import 'dg14.dart';
 
+class CaChannel {
+  final NfcProvider _nfc;
+  final MrtdApi _api;
+
+  CaChannel._(this._nfc, this._api);
+
+  /// Strict READ BINARY: no silent recovery, and only data-carrying (so
+  /// MAC-checked) success responses are accepted. Same rules as the CA proof.
+  Future<Uint8List> readBinary(CommandAPDU command) async {
+    final sm = _api.icc.sm!;
+    final raw = ResponseAPDU.fromBytes(
+      await _nfc.transceive(sm.protect(command).toBytes()),
+    );
+    if (raw.data?.isEmpty ?? true) {
+      throw StateError('Response without data: ${raw.status}');
+    }
+    final plain = sm.unprotect(raw);
+    if (plain.status != StatusWord.success) {
+      throw StateError('READ BINARY failed: ${plain.status}');
+    }
+    return plain.data!;
+  }
+}
+
 class ChipAuthenticator {
   final NfcProvider _nfc;
   ChipAuthenticator(this._nfc);
 
   /// Runs Chip Authentication on the already-connected chip. Never throws.
-  Future<ChipAuthResult> run(MrzKey key, Uint8List dg14) async {
+  Future<(ChipAuthResult, CaChannel?)> run(MrzKey key, Uint8List dg14) async {
     final ChipAuthSetup setup;
     try {
       setup = parseDg14(dg14);
     } on Dg14Exception catch (e) {
-      return ChipAuthResult(ChipAuthStatus.notSupported, e.message);
+      return (ChipAuthResult(ChipAuthStatus.notSupported, e.message), null);
     }
 
     final domain = curveDomain(setup.curve);
     if (domain == null) {
-      return ChipAuthResult(
-        ChipAuthStatus.notSupported,
-        'Unsupported curve (${setup.description})',
+      return (
+        ChipAuthResult(
+          ChipAuthStatus.notSupported,
+          'Unsupported curve (${setup.description})',
+        ),
+        null,
       );
     }
 
@@ -75,9 +102,9 @@ class ChipAuthenticator {
           if (kDebugMode) {
             debugPrint('Chip Authentication refused: ${response.status}');
           }
-          return ChipAuthResult(
-            ChipAuthStatus.rejected,
-            'Chip refused the command',
+          return (
+            ChipAuthResult(ChipAuthStatus.rejected, 'Chip refused the command'),
+            null,
           );
         }
       }
@@ -88,46 +115,59 @@ class ChipAuthenticator {
 
       // 5. The proof.
       step = 'proof';
-      return await _proveNewKeys(api, setup);
+      final result = await _proveNewKeys(api, setup);
+      return (
+        result,
+        result.status == ChipAuthStatus.passed ? CaChannel._(_nfc, api) : null,
+      );
     } on ComProviderError {
-      return const ChipAuthResult(
-        ChipAuthStatus.notCompleted,
-        'Connection lost',
+      return (
+        const ChipAuthResult(ChipAuthStatus.notCompleted, 'Connection lost'),
+        null,
       );
     } on ICCError catch (e) {
       if (kDebugMode) {
         debugPrint('Chip Authentication: chip error while $step: ${e.sw}');
       }
-      return switchedKeys
-          ? const ChipAuthResult(
-              ChipAuthStatus.failed,
-              'Chip error under the new keys',
-            )
-          : ChipAuthResult(
-              ChipAuthStatus.notCompleted,
-              'Chip error while $step',
-            );
+      return (
+        switchedKeys
+            ? const ChipAuthResult(
+                ChipAuthStatus.failed,
+                'Chip error under the new keys',
+              )
+            : ChipAuthResult(
+                ChipAuthStatus.notCompleted,
+                'Chip error while $step',
+              ),
+        null,
+      );
     } on SMError {
-      return switchedKeys
-          ? const ChipAuthResult(
-              ChipAuthStatus.failed,
-              'Invalid MAC under the new keys',
-            )
-          : const ChipAuthResult(
-              ChipAuthStatus.notCompleted,
-              'Secure messaging error',
-            );
+      return (
+        switchedKeys
+            ? const ChipAuthResult(
+                ChipAuthStatus.failed,
+                'Invalid MAC under the new keys',
+              )
+            : const ChipAuthResult(
+                ChipAuthStatus.notCompleted,
+                'Secure messaging error',
+              ),
+        null,
+      );
     } catch (e) {
       if (kDebugMode) debugPrint('Chip Authentication error: ${e.runtimeType}');
-      return switchedKeys
-          ? const ChipAuthResult(
-              ChipAuthStatus.failed,
-              'Unreadable answer under the new keys',
-            )
-          : ChipAuthResult(
-              ChipAuthStatus.notCompleted,
-              'Unexpected error while $step',
-            );
+      return (
+        switchedKeys
+            ? const ChipAuthResult(
+                ChipAuthStatus.failed,
+                'Unreadable answer under the new keys',
+              )
+            : ChipAuthResult(
+                ChipAuthStatus.notCompleted,
+                'Unexpected error while $step',
+              ),
+        null,
+      );
     }
   }
 

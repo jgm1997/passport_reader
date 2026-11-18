@@ -128,3 +128,22 @@ Uint8List toFixedBytes(BigInt value, int length) {
   }
   return out;
 }
+
+/// Total size (header + value) of the single-byte-tag TLV that starts [head].
+/// Only the first few bytes are needed, which is how we size a file after one read.
+int tlvTotalLength(List<int> head) {
+  if (head.length < 2 || (head[0] & 0x1F) == 0x1F) {
+    throw const FormatException('Unsupported or truncated TLV header');
+  }
+  final first = head[1];
+  if (first < 0x80) return 2 + first;
+  final count = first & 0x7F;
+  if (count == 0 || count > 3 || head.length < 2 + count) {
+    throw const FormatException('Invalid TLV length');
+  }
+  var length = 0;
+  for (var i = 0; i < count; i++) {
+    length = (length << 8) | head[2 + i];
+  }
+  return 2 + count + length;
+}
