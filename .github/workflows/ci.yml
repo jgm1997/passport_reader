@@ -1,0 +1,68 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+# Least privilege: this workflow can read the code an nothing else.
+permissions:
+  contents: read
+
+# A new push to the same branch cancels the run that is now out of date.
+concurrency:
+  group: ci-${{github.ref}}
+  cancel-in-progress: true
+
+jobs:
+  guard:
+    name: No secrets in the repository
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          persist-credentials: false
+      - name: Fail if key material is tracked by git
+        run: |
+          forbidden='(^|/)(pki|secrets)/(^|/)test/fixtures/tls/|\.(p8|p12|jks|keystore|key)$|play-integrity.*\json$'
+          if git ls-files | grep -E "$forbidden"; then
+            echo "::error::Key material is tracked by git (files listed above). Remove it and rotate the keys."
+            exit 1
+          fi
+
+  flutter:
+    name: Flutter tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          persist-credentials: false
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          flutter-version: 3.50.0
+          cache: true
+      - run: flutter pub get
+      - run: dart format --output=none --set-exit-if-changed lib test
+      - run: flutter analyze
+      - run: tool/make_test_certs.sh
+      - run: flutter test
+
+  backend:
+    name: Backend tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    defaults:
+      run:
+        working-directory: backend
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          persist-credentials: false
+      - uses: astral-sh/setup-uv@v6
+        with:
+          enable-cache: true
+      - run: uv sync --locked
+      - run: uv run pytest -q
