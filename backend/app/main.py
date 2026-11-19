@@ -23,7 +23,7 @@ if not settings.require_crl:
     log.warning("REQUIRE_CRL is off: missing or stale CRLs are only warnings")
 if settings.integrity is None or settings.integrity.mode is not IntegrityMode.ENFORCE:
     log.warning(
-        "Device integrity is NOT enfoeced (INTEGRITY_MODE=%s)",
+        "Device integrity is NOT enforced (INTEGRITY_MODE=%s)",
         settings.integrity.mode.value if settings.integrity else "off",
     )
 
