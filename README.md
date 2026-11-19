@@ -4,7 +4,7 @@ A cross-platform (Android/iOS) Flutter app that reads an ePassport's chip over N
 
 > ⚠️ **Educational project, not a production identity-verification system.**
 > It was built step by step as a learning exercise in Flutter, NFC and PKI.
-> It is **not affiliated with, endorsed by, or connected to** the UK Home Office, GOV.UK, or any government or passport authority. See [Known limitations](#known-limitations) before reusing any of it.
+> It is **not affiliated with, endorsed by, or connected to** any government agency or passport authority. See [Known limitations](#known-limitations) before reusing any of it.
 
 ## What it does
 
@@ -308,7 +308,7 @@ Dependabot keeps the backend's Python dependencies and the workflow's GitHub Act
 
 **Scope**
 - Verifies that a passport document and its chip are genuine. It does **not** verify that the person holding it is its owner (no face matching or liveness detection).
-- Educational project. Not affiliated with, or endorsed by, the UK Home Office or GOV.UK.
+- Educational project. Not affiliated with, or endorsed by, any government agency or passport authority.
 
 **Chip access and authenticity**
 - PACE falls back to BAC on chips whose `EF.CardAccess` dmrtd cannot parse; BAC keys derive only from the MRZ, so anyone who has seen the data page can read the chip.
