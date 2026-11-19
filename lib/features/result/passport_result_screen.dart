@@ -6,6 +6,7 @@ import 'package:passport_reader/core/mrz/utils/date_format.dart';
 import 'package:passport_reader/core/passport/chip_auth_result.dart';
 import 'package:passport_reader/core/passport/consistency.dart';
 import 'package:passport_reader/core/passport/passport_data.dart';
+import 'package:passport_reader/core/security/sensitive_data.dart';
 import 'package:passport_reader/core/verification/photo_integrity.dart';
 import 'package:passport_reader/core/verification/verification_client.dart';
 import 'package:passport_reader/core/verification/verification_result.dart';
@@ -33,6 +34,7 @@ class _PassportResultScreenState extends State<PassportResultScreen> {
   @override
   void initState() {
     super.initState();
+    SensitiveData.track(widget.data);
     _verification = _verify();
   }
 
@@ -52,7 +54,7 @@ class _PassportResultScreenState extends State<PassportResultScreen> {
 
   @override
   void dispose() {
-    widget.data.wipe(); // The user left the result: erase when we can.
+    SensitiveData.release(widget.data);
     super.dispose();
   }
 

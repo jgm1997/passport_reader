@@ -197,17 +197,27 @@ Dependabot keeps the backend's Python dependencies and the workflow's GitHub Act
 
 ## Known limitations
 
-This is a learning project. Before relying on any part of it, note that:
+**Scope**
+- Verifies that a passport document and its chip are genuine. It does **not** verify that the person holding it is its owner (no face matching or liveness detection).
+- Educational project. Not affiliated with, or endorsed by, the UK Home Office or GOV.UK.
 
-- **Anti-cloning is partial.** Chip Authentication runs only on chips that have DG14 and use elliptic-curve keys on a supported curve (Brainpool r1 224–512, P-256, P-384, P-521). Classic Diffie-Hellman isn't supported. DG15 is read, but **Active Authentication isn't implemented**, so chips with only DG15 get no anti-cloning check.
-- **No production CA is pinned yet**, so release builds can't reach any verification server. Only development CAs are configured.
-- **Device integrity is off by default** (`INTEGRITY_MODE=off`) and exists on **Android only**. iOS (App Attest) isn't implemented, so iOS requests never carry a token and would be rejected in `enforce` mode.
-- **CRL checking fails open by default** (`REQUIRE_CRL` off), and CRLs are not refreshed automatically.
-- **PACE parsing in `dmrtd`** fails on some chips (`PACEInfo` without the optional `parameterId`); the app falls back to BAC.
-- **Only Brainpool r1 curves** (256/384/512) are supported when certificates use explicit EC parameters.
-- **6 CSCAs from the German master list are skipped** (Austria, United Arab Emirates and Japan) because their certificates have encoding errors. Each of these countries has other valid CSCAs in the list, so their passports can still be verified.
-- **No liveness or face matching**: the app doesn't check that the person holding the phone is the passport holder.
-- **Not reviewed** for production, legal or regulatory compliance (e.g. GDPR for biometric data, export-compliance rules for apps using encryption).
+**Chip access and authenticity**
+- PACE falls back to BAC on chips whose `EF.CardAccess` dmrtd cannot parse; BAC keys derive only from the MRZ, so anyone who has seen the data page can read the chip.
+- Chip Authentication is performed and reported by the app, not verified by the server. It proves a genuine chip is responding but cannot detect NFC relay attacks.
+- Active Authentication (DG15) is not implemented.
+- 6 CSCAs from the German master list (AT, AE, JP) are skipped because of encoding errors; each of those countries has other valid CSCAs.
+- CRLs are configured for Spain only; other countries are verified without revocation data.
+
+**Platforms**
+- iOS is compile-checked only and has never run on a device.
+- iOS cannot block screenshots; its app-switcher cover is not guaranteed to be drawn in time.
+- Device integrity (Play Integrity) runs in report mode: it is not enforced until iOS App Attest exists, because a check one platform skips can be bypassed by claiming to be that platform. Integrity verdicts raise the cost of attacks; they do not make them impossible.
+
+**Data handling**
+- Passport bytes are erased on exit and after 2 minutes in the background, but Dart strings (name, document number) cannot be erased and may persist until garbage-collected.
+- Keyboard privacy flags are requests a malicious keyboard can ignore; prefer the camera scan.
+- On-device text recognition (Google ML Kit) sends anonymous usage telemetry to Google; images and recognised text stay on the device.
+- A public deployment would process personal data (DG1) and fall under the GDPR.
 
 ## Testing without personal data
 
