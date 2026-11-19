@@ -43,22 +43,26 @@ _All screenshots come from the demo build and use the ICAO 9303 specimen passpor
 
 ```text
 lib/
-  core/            Logic with no UI: MRZ parsing, chip reading, image decoding,
-                   verification client, pinned TLS, device integrity, privacy cover.
-                   Unit-tested.
+  core/            Logic with no UI: MRZ parsing, chip reading, Chip Authentication,
+                   image decoding, verification client, pinned TLS, device integrity,
+                   privacy cover, background timeout, demo services. Unit-tested.
   features/        Screens: home, MRZ scan, manual entry, NFC read, result.
-android/           Android host app, including the Play Integrity method channel
-                   and screen protection (MainActivity.kt).
+android/           Android host app: `real` and `demo` product flavors, the Play
+                   Integrity method channel and screen protection (MainActivity.kt).
+ios/               iOS host app (compile-checked only, see Known limitations).
 test/              Flutter tests (ICAO sample passport and synthetic data only).
 tool/              make_test_certs.sh: throwaway TLS fixtures for the tests.
-scripts/           dev_adb_reverse.sh: forwards the phone's port 8000 to the laptop.
+scripts/           dev_adb_reverse.sh: forwards the phone's port 8000 to the computer.
+                   release_local.sh: tag, deploy and install a release (author's setup).
 backend/
   app/             FastAPI server: Passive Authentication, trust store, CRLs,
-                   Play Integrity checks.
+                   Play Integrity checks, configuration.
   tests/           Pytest suite using fictional countries generated with OpenSSL.
-  tools/           LDIF extraction (ICAO PKD) and CRL address lookup.
+  tools/           crl_urls.py: lists a country's CRL download addresses.
   scripts/         checkpoint.sh: one-command health check of the backend.
                    dev_pki.sh: development CA and localhost TLS certificate.
+                   prod_pki.sh: offline production CAs and server certificates.
+                   refresh_crls.sh: downloads the CRLs listed in crl_sources.txt.
   anchors/         Pinned root certificate(s) trusted to sign master lists.
 .github/           CI workflow and Dependabot configuration.
 codemagic.yaml     Cloud iOS builds (no Mac required).
@@ -68,7 +72,7 @@ codemagic.yaml     Cloud iOS builds (no Mac required).
 
 | Part   | Needs                                                                                                                     |
 | ------ | ------------------------------------------------------------------------------------------------------------------------- |
-| App    | Flutter (stable), an **NFC-capable Android phone** (Android 7+ / API 24+). Emulators have no NFC.                         |
+| App    | Flutter 3.50 (stable, the version CI uses), an **NFC-capable Android phone** (Android 7+ / API 24+). Emulators have no NFC. |
 | iOS    | iPhone 7 or newer, iOS 15.5+. Building needs a cloud Mac (Codemagic); installing needs a paid Apple Developer membership. |
 | Server | [uv](https://docs.astral.sh/uv/), Python 3.14 (installed by uv), OpenSSL (used by the tests).                             |
 
@@ -93,13 +97,9 @@ The server only trusts CSCA certificates that come from a **master list whose si
    openssl x509 -inform DER -in anchors/<file>.cer -noout -subject -fingerprint -sha256
    ```
 
-2. Download the matching master list (`.ml`) into `backend/trust/`. ICAO PKD LDIF downloads can be unpacked with:
+2. Download the matching master list (`.ml`) into `backend/trust/`. Plain CSCA certificates (`.pem`, `.der`, `.cer`, `.crt`) placed in `trust/` are trusted as they are, without any signature check.
 
-   ```bash
-   uv run python -m tools.ldif_extract <file>.ldif --ml-dir trust --crl-dir crls
-   ```
-
-3. Optionally add CRLs to `backend/crls/` (`uv run python -m tools.crl_urls ES` lists a country's CRL addresses).
+3. Optionally add CRLs to `backend/crls/`. `uv run python -m tools.crl_urls ES` lists a country's CRL addresses. `./scripts/refresh_crls.sh` downloads every CRL listed in `crl_sources.txt` and keeps the previous file if a download fails or has expired.
 
 `trust/` and `crls/` are git-ignored: master lists and PKD data come with their own terms of use, so download them yourself.
 
@@ -123,7 +123,9 @@ TRUST_DIR=trust uv run uvicorn app.main:app --host 127.0.0.1 --port 8000 \
   --ssl-keyfile pki/server.key --ssl-certfile pki/server.pem
 ```
 
-In VS Code, the **Backend + Flutter** launch configuration starts the server (with TLS and `INTEGRITY_MODE=report`) and the app together.
+`checkpoint.sh` also checks that Spain (`ES`) is in the trust store, so that check fails until a master list containing Spain is installed. For a full walkthrough from a fresh clone to a phone talking to the server, see [Local development server](#local-development-server).
+
+### Configuration
 
 | Variable                        | Default   | Meaning                                                                                     |
 | ------------------------------- | --------- | ------------------------------------------------------------------------------------------- |
@@ -135,6 +137,7 @@ In VS Code, the **Backend + Flutter** launch configuration starts the server (wi
 | `INTEGRITY_MODE`                | `off`     | Play Integrity: `off`, `report` (check and log, never block) or `enforce` (reject with 403) |
 | `PLAY_INTEGRITY_SA_FILE`        | (none)    | Google service-account JSON used to decode tokens. Required unless `INTEGRITY_MODE=off`     |
 | `REQUIRE_PLAY_RECOGNIZED`       | off       | `1` = also require the app to be the build distributed by Google Play                       |
+| `APP_ENV`                       | (none)    | `production` = refuse to start unless CRLs are required, master lists are verified and Play Integrity is on |
 
 ### Play Integrity (optional)
 
@@ -146,6 +149,112 @@ The server checks that the token is for this app's package, is less than 2 minut
 
 The server logs verification **outcomes only**, never names, numbers or raw data. Integrity logs contain verdict labels only.
 
+## Local development server
+
+This walkthrough takes a fresh clone to a phone that reads a passport and has it verified by a server on your own computer. Everything runs locally: no cloud services are needed, and Play Integrity stays off.
+
+```text
+Phone ──USB/Wi-Fi adb──▶ adb reverse tcp:8000 ──▶ https://localhost:8000 (uvicorn on your computer)
+```
+
+### 1. Install the tools
+
+- [uv](https://docs.astral.sh/uv/), OpenSSL and `curl` for the server.
+- Flutter 3.50 and the Android platform tools (`adb`) for the app.
+
+### 2. Set up the Python environment
+
+```bash
+cd backend
+uv python install 3.14
+uv sync                       # creates .venv from uv.lock
+uv run pytest -q              # optional: should report all tests passing
+```
+
+### 3. Create the trust store folders
+
+The server **refuses to start if `trust/` does not exist**, so create it even if it stays empty for now:
+
+```bash
+mkdir -p trust crls
+```
+
+With an empty `trust/` the server starts and answers, but every passport fails with _"Document Signer was not issued by any trusted CSCA"_. That's enough to test the app-to-server connection. To verify real passports, install a root certificate and master list as described in [Trust anchors and master lists](#trust-anchors-and-master-lists).
+
+If `trust/` contains a `.ml` file but `anchors/` has no matching root, the server stops with `MasterListError`. That's deliberate. Fix the anchor rather than setting `ALLOW_UNVERIFIED_MASTER_LISTS=1`.
+
+### 4. Create the development TLS certificate and pin it in the app
+
+```bash
+./scripts/dev_pki.sh          # writes pki/ca.pem, pki/server.key, pki/server.pem
+```
+
+The app trusts only the CAs listed in `lib/core/network/pinned_cas.dart`. **The first time you run the script on a machine**, copy the full contents of `backend/pki/ca.pem` (including the `BEGIN`/`END` lines) into `_developmentCas`. Debug builds trust that list; release builds never do.
+
+The server certificate is valid for 397 days, for `localhost` and `127.0.0.1` only. Re-run the script to renew it; the CA stays the same, so the app doesn't need to change.
+
+### 5. Start the server
+
+```bash
+TRUST_DIR=trust uv run uvicorn app.main:app --host 127.0.0.1 --port 8000 \
+  --ssl-keyfile pki/server.key --ssl-certfile pki/server.pem
+```
+
+At start-up the server logs how many CSCA certificates and CRLs it loaded, plus a warning for each development-only setting (unverified master lists, `REQUIRE_CRL` off, integrity not enforced). Those warnings are expected locally.
+
+Check it from a second terminal, at the repository root:
+
+```bash
+curl --cacert backend/pki/ca.pem https://localhost:8000/health
+# {"status":"ok","cscaCertificates":0,"countries":0,"crls":0}
+```
+
+Passing `--cacert` instead of `-k` checks the same chain the app will check. `uv run uvicorn ... --reload` restarts the server automatically when the code changes.
+
+### 6. Connect the phone and run the app
+
+```bash
+adb devices                   # the phone must be listed as "device"
+scripts/dev_adb_reverse.sh    # the phone's localhost:8000 now reaches your computer
+flutter run --flavor real --dart-define=VERIFY_URL=https://localhost:8000
+```
+
+`--flavor` is required, because the Android project defines two product flavors: `real` and `demo`. Re-run `scripts/dev_adb_reverse.sh` every time the phone reconnects, because adb forwarding doesn't survive a disconnect.
+
+The server binds to `127.0.0.1`, so nothing else on your network can reach it; `adb reverse` is the only way in. `https://localhost:8000` is also the app's default `VERIFY_URL`, so the `--dart-define` only documents the value here.
+
+### 7. Optional: test Play Integrity locally
+
+Follow [Play Integrity (optional)](#play-integrity-optional), then start the server in report mode so that it logs verdicts but never blocks a request:
+
+```bash
+INTEGRITY_MODE=report PLAY_INTEGRITY_SA_FILE=secrets/play-integrity.json \
+TRUST_DIR=trust uv run uvicorn app.main:app --host 127.0.0.1 --port 8000 \
+  --ssl-keyfile pki/server.key --ssl-certfile pki/server.pem
+```
+
+Then add `--dart-define=PLAY_CLOUD_PROJECT_NUMBER=<number>` to `flutter run`.
+
+### Troubleshooting
+
+| Symptom | Likely cause |
+| --- | --- |
+| `FileNotFoundError: ... 'trust'` at start-up | The `trust/` folder is missing (step 3), or the server was started outside `backend/`. |
+| `MasterListError` at start-up | A `.ml` file in `trust/` isn't signed by a certificate in `anchors/`. |
+| App: _"Couldn't establish a trusted connection"_ | `pki/ca.pem` isn't in `_developmentCas`, the server certificate has expired, or you're running a release build. |
+| App: _"Couldn't reach the verification server"_ | The server isn't running, or `adb reverse` was lost: re-run `scripts/dev_adb_reverse.sh`. |
+| App: _"The verification server refused the request"_ (HTTP 422) | The request was malformed or too large; the server log lists the field names, never their values. |
+| Every passport: _"not issued by any trusted CSCA"_ | `trust/` is empty or doesn't contain the issuing country. |
+| WSL: the phone can't reach a server that works from WSL | `adb` runs on Windows but the server is in WSL. Run both on the same side, or check that WSL forwards `localhost` (the default with WSL 2). |
+
+### No server at all: the demo build
+
+```bash
+flutter run --flavor demo
+```
+
+The demo app has its own package name (`.demo`) and allows screenshots. It never touches NFC or the network: it always shows the ICAO specimen passport and says in the result that nothing was verified.
+
 ## Running the app
 
 ```bash
@@ -155,7 +264,7 @@ flutter test
 
 # Phone connected (USB or wireless debugging), server running locally with TLS:
 scripts/dev_adb_reverse.sh
-flutter run --dart-define=VERIFY_URL=https://localhost:8000 \
+flutter run --flavor real --dart-define=VERIFY_URL=https://localhost:8000 \
   --dart-define=PLAY_CLOUD_PROJECT_NUMBER=<number>   # optional
 ```
 
@@ -177,7 +286,7 @@ GitHub Actions (`.github/workflows/ci.yml`) runs on every push to `main` and eve
 - **No secrets in the repository**: fails if key material (`.p8`, `.p12`, `.jks`, `.key`, Play Integrity JSON, …) is tracked by git.
 - **Flutter tests**: `dart format` check, `flutter analyze`, test certificates, `flutter test`.
 - **Backend tests**: `uv sync --locked` and `pytest`.
-- **Android build**: Gradle wrapper validation and a debug APK build.
+- **Android build**: Gradle wrapper validation and debug APK builds of both flavors (`real` and `demo`).
 
 Dependabot keeps the backend's Python dependencies and the workflow's GitHub Actions up to date.
 
