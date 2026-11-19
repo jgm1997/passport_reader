@@ -25,7 +25,7 @@ def production_problems(settings: Settings) -> list[str]:
     if not settings.require_crl:
         problems.append("REQUIRE_CRL must be 1")
     if not settings.master_lists_verified:
-        problems(
+        problems.append(
             "master lists must be verified against anchors/ (no ALLOW_UNVERIFIED_MASTER_LISTS)"
         )
     if settings.integrity is None:
