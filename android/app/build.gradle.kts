@@ -1,3 +1,11 @@
+import java.util.Properties
+
+val keystoreProperties = Properties().apply {
+    val file = rootProject.file("key.properties")
+    if (file.exists()) file.inputStream().use { load(it) }
+}
+val releaseStoreFile: String? = keystoreProperties.getProperty("storeFile")
+
 plugins {
     id("com.android.application")
     // The Flutter Gradle Plugin must be applied after the Android and Kotlin Gradle plugins.
@@ -15,7 +23,6 @@ android {
     }
 
     defaultConfig {
-        // TODO: Specify your own unique Application ID (https://developer.android.com/studio/build/application-id.html).
         applicationId = "es.jgm1997.passport_reader"
         // You can update the following values to match your application needs.
         // For more information, see: https://flutter.dev/to/review-gradle-config.
@@ -49,11 +56,25 @@ android {
         }
     }
 
+    signingConfigs {
+        create("release") {
+            if (releaseStoreFile != null) {
+                storeFile = file(releaseStoreFile)
+                keyAlias = keystoreProperties.getProperty("keyAlias")
+                storePassword = System.getenv("PR_STORE_PASSWORD")
+                keyPassword = System.getenv("PR_KEY_PASSWORD")
+            }
+        }
+    }
+
     buildTypes {
         release {
-            // TODO: Add your own signing config for the release build.
-            // Signing with the debug keys for now, so `flutter run --release` works.
-            signingConfig = signingConfigs.getByName("debug")
+            // Never debug-sign a release. Without the upload key, release builds stay unsigned.
+            signingConfig = if (releaseStoreFile != null) signingConfigs.getByName("release") else null
+            proguardFiles(
+                getDefaultProguardFile("proguard-android-optimize.txt"),
+                "proguard-rules.pro",
+            )
         }
     }
 
